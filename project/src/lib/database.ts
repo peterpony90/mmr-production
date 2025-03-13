@@ -21,8 +21,11 @@ export interface StageTime {
 
 export async function createManufacturingOrder(
   manufacturingNumber: string,
-  bicycleModel: string
 ): Promise<ManufacturingOrder> {
+  if (!manufacturingNumber?.trim()) {
+    throw new Error('El número de fabricación es requerido');
+  }
+
   const { data: { session }, error: sessionError } = await supabase.auth.getSession();
   
   if (sessionError || !session) {
@@ -34,9 +37,13 @@ export async function createManufacturingOrder(
     const { data: existingOrders, error: checkError } = await supabase
       .from('manufacturing_orders')
       .select('id')
-      .eq('manufacturing_number', manufacturingNumber);
+      .eq('manufacturing_number', manufacturingNumber.trim());
 
-    if (checkError) throw checkError;
+    if (checkError) {
+      console.error('Error checking existing orders:', checkError);
+      throw new Error('Error al verificar el número de fabricación');
+    }
+    
     if (existingOrders && existingOrders.length > 0) {
       throw new Error('Este número de fabricación ya existe');
     }
@@ -45,8 +52,8 @@ export async function createManufacturingOrder(
       .from('manufacturing_orders')
       .insert([
         {
-          manufacturing_number: manufacturingNumber,
-          bicycle_model: bicycleModel,
+          manufacturing_number: manufacturingNumber.trim(),
+          bicycle_model: manufacturingNumber.trim(), // Use manufacturing number as the model
           current_stage: 'sticker',
           user_id: session.user.id
         }
@@ -54,15 +61,31 @@ export async function createManufacturingOrder(
       .select()
       .single();
 
-    if (error) throw error;
-    if (!data) throw new Error('No se pudo crear la orden de fabricación');
+    if (error) {
+      console.error('Error creating order:', error);
+      if (error.code === '23505') { // Unique violation
+        throw new Error('Este número de fabricación ya existe');
+      }
+      throw new Error('Error al crear la orden de fabricación');
+    }
+
+    if (!data) {
+      throw new Error('No se pudo crear la orden de fabricación');
+    }
     
     return data;
   } catch (error: any) {
-    if (error.message?.includes('duplicate key value')) {
+    // Log the error for debugging
+    console.error('Create order error:', error);
+    
+    // Handle specific error cases
+    if (error.message?.includes('duplicate key value') || 
+        error.message?.includes('ya existe')) {
       throw new Error('Este número de fabricación ya existe');
     }
-    throw error;
+    
+    // Re-throw the error with a user-friendly message
+    throw new Error(error.message || 'Error al crear la orden de fabricación');
   }
 }
 

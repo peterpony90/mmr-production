@@ -61,6 +61,13 @@ const stageConfig: Record<Stage, StageInfo> = {
   }
 };
 
+const initialStageTime: StageTime = {
+  sticker: 0,
+  cutting: 0,
+  assembly: 0,
+  packaging: 0
+};
+
 function App() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -71,17 +78,11 @@ function App() {
   const [isSignUp, setIsSignUp] = useState(false);
   const [currentView, setCurrentView] = useState<View>('menu');
   const [manufacturingNumber, setManufacturingNumber] = useState('');
-  const [bicycle, setBicycle] = useState('');
   const [currentStage, setCurrentStage] = useState<Stage>('form');
   const [isTimerRunning, setIsTimerRunning] = useState(false);
   const [startTime, setStartTime] = useState<number | null>(null);
   const [elapsedTime, setElapsedTime] = useState<number>(0);
-  const [stageTimes, setStageTimes] = useState<StageTime>({
-    sticker: 0,
-    cutting: 0,
-    assembly: 0,
-    packaging: 0
-  });
+  const [stageTimes, setStageTimes] = useState<StageTime>(initialStageTime);
   const [completedStages, setCompletedStages] = useState<Set<Stage>>(new Set());
   const [currentOrder, setCurrentOrder] = useState<ManufacturingOrder | null>(null);
   const [orders, setOrders] = useState<ManufacturingOrder[]>([]);
@@ -150,35 +151,38 @@ function App() {
     try {
       await signOut();
       setSession(null);
-      setCurrentView('menu');
-      setCurrentOrder(null);
-      setCurrentStage('form');
-      setIsTimerRunning(false);
-      setElapsedTime(0);
-      setStartTime(null);
-      setStageTimes({
-        sticker: 0,
-        cutting: 0,
-        assembly: 0,
-        packaging: 0
-      });
-      setCompletedStages(new Set());
+      resetAppState();
     } catch (err: any) {
       console.error('Error al cerrar sesión:', err);
       // Even if there's an error, clear the local state
       setSession(null);
-      setCurrentView('menu');
+      resetAppState();
     }
+  };
+
+  const resetAppState = () => {
+    setCurrentView('menu');
+    setCurrentOrder(null);
+    setCurrentStage('form');
+    setIsTimerRunning(false);
+    setElapsedTime(0);
+    setStartTime(null);
+    setStageTimes(initialStageTime);
+    setCompletedStages(new Set());
+    setManufacturingNumber('');
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setFormError(null);
     try {
-      const order = await createManufacturingOrder(manufacturingNumber, bicycle);
+      const order = await createManufacturingOrder(manufacturingNumber);
       setCurrentOrder(order);
       setCurrentStage('sticker');
       setCurrentView('production');
+      // Reset stage times and completed stages for the new order
+      setStageTimes(initialStageTime);
+      setCompletedStages(new Set());
       await loadOrders();
     } catch (err: any) {
       if (err.message?.includes('duplicate key value')) {
@@ -233,7 +237,6 @@ function App() {
   const handleSelectOrder = (order: ManufacturingOrder) => {
     setCurrentOrder(order);
     setManufacturingNumber(order.manufacturing_number);
-    setBicycle(order.bicycle_model);
     setCurrentStage(order.current_stage as Stage);
     setCurrentView('production');
 
@@ -254,16 +257,15 @@ function App() {
         }
       });
       setCompletedStages(completed);
+    } else {
+      // Reset times and completed stages if no times exist
+      setStageTimes(initialStageTime);
+      setCompletedStages(new Set());
     }
   };
 
   const handleGoToMenu = () => {
-    setCurrentOrder(null);
-    setCurrentStage('form');
-    setIsTimerRunning(false);
-    setElapsedTime(0);
-    setStartTime(null);
-    setCurrentView('menu');
+    resetAppState();
   };
 
   const handleDeleteAll = async () => {
@@ -325,7 +327,7 @@ function App() {
             <CheckCircle className="w-16 h-16" />
           </div>
           
-          <h1 className="text-3xl font-bold text-center mb-2">{bicycle}</h1>
+          <h1 className="text-3xl font-bold text-center mb-2">{currentOrder?.manufacturing_number}</h1>
           <h2 className="text-xl font-semibold text-center text-gray-600 mb-8">
             Número de fabricación: {manufacturingNumber}
           </h2>
@@ -371,18 +373,7 @@ function App() {
               </button>
               <button
                 onClick={() => {
-                  setCurrentOrder(null);
-                  setCurrentStage('form');
-                  setIsTimerRunning(false);
-                  setStageTimes({
-                    sticker: 0,
-                    cutting: 0,
-                    assembly: 0,
-                    packaging: 0
-                  });
-                  setCompletedStages(new Set());
-                  setElapsedTime(0);
-                  setStartTime(null);
+                  resetAppState();
                   setCurrentView('new-order');
                 }}
                 className="flex items-center gap-2 px-6 py-3 text-white bg-[#b41826] rounded-md hover:bg-[#a01522]"
@@ -497,7 +488,6 @@ function App() {
           <div className="bg-gray-50 rounded-lg p-4">
             <h3 className="font-medium text-gray-700 mb-2">Detalles</h3>
             <p className="text-sm text-gray-600">Número de fabricación: {manufacturingNumber}</p>
-            <p className="text-sm text-gray-600">Bicicleta: {bicycle}</p>
           </div>
         </div>
       </div>
@@ -568,29 +558,15 @@ function App() {
                 
                 <form onSubmit={handleSubmit} className="space-y-6">
                   <div>
-                    <label htmlFor="manufacturingNumber" className="block text-sm font-medium text-gray-700">
+                    <label htmlFor="manufacturingNumber" className="block text-lg font-medium text-gray-700 mb-2">
                       Número de fabricación
                     </label>
-                    <input
-                      type="text"
+                    <textarea
                       id="manufacturingNumber"
                       value={manufacturingNumber}
                       onChange={(e) => setManufacturingNumber(e.target.value)}
-                      className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-[#b41826] focus:ring-[#b41826] sm:text-sm"
-                      required
-                    />
-                  </div>
-
-                  <div>
-                    <label htmlFor="bicycle" className="block text-sm font-medium text-gray-700">
-                      Bicicleta
-                    </label>
-                    <input
-                      type="text"
-                      id="bicycle"
-                      value={bicycle}
-                      onChange={(e) => setBicycle(e.target.value)}
-                      className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-[#b41826] focus:ring-[#b41826] sm:text-sm"
+                      className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-[#b41826] focus:ring-[#b41826] text-lg"
+                      rows={3}
                       required
                     />
                   </div>
@@ -610,6 +586,7 @@ function App() {
                     </button>
 
                     <button
+                      
                       type="submit"
                       className="inline-flex justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-[#b41826] hover:bg-[#a01522] focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#b41826]"
                     >
