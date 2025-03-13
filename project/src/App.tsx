@@ -26,6 +26,19 @@ interface StageInfo {
   prevButtonText?: string;
 }
 
+interface StageConfig {
+  id: Stage;
+  title: string;
+  description: string;
+}
+
+const availableStages: StageConfig[] = [
+  { id: 'sticker', title: 'Pegatinado', description: 'Aplicación de pegatinas y etiquetas' },
+  { id: 'cutting', title: 'Corte y cableado', description: 'Preparación de cables y cortes necesarios' },
+  { id: 'assembly', title: 'Montaje', description: 'Ensamblaje de componentes' },
+  { id: 'packaging', title: 'Embalaje', description: 'Empaquetado final del producto' }
+];
+
 const stageConfig: Record<Stage, StageInfo> = {
   form: {
     title: 'Inicio',
@@ -78,6 +91,7 @@ function App() {
   const [isSignUp, setIsSignUp] = useState(false);
   const [currentView, setCurrentView] = useState<View>('menu');
   const [manufacturingNumber, setManufacturingNumber] = useState('');
+  const [selectedStages, setSelectedStages] = useState<Set<Stage>>(new Set(['sticker', 'cutting', 'assembly', 'packaging']));
   const [currentStage, setCurrentStage] = useState<Stage>('form');
   const [isTimerRunning, setIsTimerRunning] = useState(false);
   const [startTime, setStartTime] = useState<number | null>(null);
@@ -170,15 +184,22 @@ function App() {
     setStageTimes(initialStageTime);
     setCompletedStages(new Set());
     setManufacturingNumber('');
+    setSelectedStages(new Set(['sticker', 'cutting', 'assembly', 'packaging']));
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setFormError(null);
+
+    if (selectedStages.size === 0) {
+      setFormError('Debes seleccionar al menos una etapa');
+      return;
+    }
+
     try {
-      const order = await createManufacturingOrder(manufacturingNumber);
+      const order = await createManufacturingOrder(manufacturingNumber, Array.from(selectedStages));
       setCurrentOrder(order);
-      setCurrentStage('sticker');
+      setCurrentStage(Array.from(selectedStages)[0]);
       setCurrentView('production');
       // Reset stage times and completed stages for the new order
       setStageTimes(initialStageTime);
@@ -223,6 +244,18 @@ function App() {
     }
   };
 
+  const getNextStage = (currentStage: Stage): Stage | undefined => {
+    const stages = Array.from(selectedStages);
+    const currentIndex = stages.indexOf(currentStage as Stage);
+    return stages[currentIndex + 1];
+  };
+
+  const getPrevStage = (currentStage: Stage): Stage | undefined => {
+    const stages = Array.from(selectedStages);
+    const currentIndex = stages.indexOf(currentStage as Stage);
+    return stages[currentIndex - 1];
+  };
+
   const handleStageChange = async (newStage: Stage) => {
     if (currentOrder) {
       await updateManufacturingOrderStage(currentOrder.id, newStage);
@@ -239,6 +272,7 @@ function App() {
     setManufacturingNumber(order.manufacturing_number);
     setCurrentStage(order.current_stage as Stage);
     setCurrentView('production');
+    setSelectedStages(new Set(order.stages as Stage[]));
 
     // Set the stage times from the total times
     if (totalTimes[order.id]) {
@@ -279,12 +313,14 @@ function App() {
   };
 
   const getTotalTime = (): number => {
-    return Object.values(stageTimes).reduce((acc, time) => acc + time, 0);
+    return Object.entries(stageTimes)
+      .filter(([stage]) => selectedStages.has(stage as Stage))
+      .reduce((acc, [, time]) => acc + time, 0);
   };
 
   const renderBreadcrumbs = () => {
-    const stages: Stage[] = ['form', 'sticker', 'cutting', 'assembly', 'packaging', 'summary'];
-    const currentIndex = stages.indexOf(currentStage);
+    const stages = Array.from(selectedStages);
+    const currentIndex = stages.indexOf(currentStage as Stage);
 
     return (
       <nav className="mb-6">
@@ -344,22 +380,12 @@ function App() {
                 Tiempos por Etapa
               </h3>
               <div className="space-y-3">
-                <div className="flex justify-between items-center">
-                  <span className="text-gray-600">Pegatinado:</span>
-                  <span className="font-mono">{formatTime(stageTimes.sticker)}</span>
-                </div>
-                <div className="flex justify-between items-center">
-                  <span className="text-gray-600">Corte y cableado:</span>
-                  <span className="font-mono">{formatTime(stageTimes.cutting)}</span>
-                </div>
-                <div className="flex justify-between items-center">
-                  <span className="text-gray-600">Montaje:</span>
-                  <span className="font-mono">{formatTime(stageTimes.assembly)}</span>
-                </div>
-                <div className="flex justify-between items-center">
-                  <span className="text-gray-600">Embalaje:</span>
-                  <span className="font-mono">{formatTime(stageTimes.packaging)}</span>
-                </div>
+                {Array.from(selectedStages).map(stage => (
+                  <div key={stage} className="flex justify-between items-center">
+                    <span className="text-gray-600">{stageConfig[stage].title}:</span>
+                    <span className="font-mono">{formatTime(stageTimes[stage])}</span>
+                  </div>
+                ))}
               </div>
             </div>
 
@@ -398,6 +424,8 @@ function App() {
     if (!currentStageConfig) return null;
 
     const isStageCompleted = completedStages.has(currentStage);
+    const nextStage = getNextStage(currentStage);
+    const prevStage = getPrevStage(currentStage);
 
     return (
       <div className="max-w-3xl mx-auto">
@@ -441,34 +469,31 @@ function App() {
 
             <div className="space-y-4">
               <div className="flex justify-center gap-4">
-                {currentStageConfig.prevStage && (
+                {prevStage && (
                   <button
-                    onClick={() => handleStageChange(currentStageConfig.prevStage as Stage)}
+                    onClick={() => handleStageChange(prevStage)}
                     className="flex items-center gap-2 px-6 py-3 text-white bg-gray-600 rounded-md hover:bg-gray-700"
                   >
                     <ArrowLeft className="w-5 h-5" />
-                    {currentStageConfig.prevButtonText}
+                    {stageConfig[prevStage].title}
                   </button>
                 )}
 
-                {currentStage === 'packaging' ? (
+                {nextStage ? (
                   <button
-                    onClick={() => {
-                      handleStopTimer();
-                      handleStageChange('summary');
-                    }}
+                    onClick={() => handleStageChange(nextStage)}
+                    className="flex items-center gap-2 px-6 py-3 text-white bg-[#b41826] rounded-md hover:bg-[#a01522]"
+                  >
+                    {stageConfig[nextStage].title}
+                    <ArrowRight className="w-5 h-5" />
+                  </button>
+                ) : (
+                  <button
+                    onClick={() => handleStageChange('summary')}
                     className="flex items-center gap-2 px-6 py-3 text-white bg-green-600 rounded-md hover:bg-green-700"
                   >
                     Finalizar
                     <CheckCircle className="w-5 h-5" />
-                  </button>
-                ) : currentStageConfig.nextStage && (
-                  <button
-                    onClick={() => handleStageChange(currentStageConfig.nextStage as Stage)}
-                    className="flex items-center gap-2 px-6 py-3 text-white bg-[#b41826] rounded-md hover:bg-[#a01522]"
-                  >
-                    {currentStageConfig.nextButtonText}
-                    <ArrowRight className="w-5 h-5" />
                   </button>
                 )}
               </div>
@@ -571,6 +596,42 @@ function App() {
                     />
                   </div>
 
+                  <div>
+                    <label className="block text-lg font-medium text-gray-700 mb-4">
+                      Etapas a realizar
+                    </label>
+                    <div className="space-y-4">
+                      {availableStages.map((stage) => (
+                        <div key={stage.id} className="flex items-start">
+                          <div className="flex items-center h-5">
+                            <input
+                              type="checkbox"
+                              checked={selectedStages.has(stage.id)}
+                              onChange={(e) => {
+                                const newSelectedStages = new Set(selectedStages);
+                                if (e.target.checked) {
+                                  newSelectedStages.add(stage.id);
+                                } else {
+                                  newSelectedStages.delete(stage.id);
+                                }
+                                setSelectedStages(newSelectedStages);
+                              }}
+                              className="h-4 w-4 text-[#b41826] border-gray-300 rounded focus:ring-[#b41826]"
+                            />
+                          </div>
+                          <div className="ml-3">
+                            <label className="text-base font-medium text-gray-700">
+                              {stage.title}
+                            </label>
+                            <p className="text-sm text-gray-500">
+                              {stage.description}
+                            </p>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
                   {formError && (
                     <div className="text-red-600 text-sm">{formError}</div>
                   )}
@@ -586,7 +647,6 @@ function App() {
                     </button>
 
                     <button
-                      
                       type="submit"
                       className="inline-flex justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-[#b41826] hover:bg-[#a01522] focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#b41826]"
                     >

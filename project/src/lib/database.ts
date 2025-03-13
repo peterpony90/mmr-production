@@ -3,11 +3,11 @@ import { supabase } from './supabase';
 export interface ManufacturingOrder {
   id: string;
   manufacturing_number: string;
-  bicycle_model: string;
   current_stage: string;
   created_at: string;
   updated_at: string;
   user_id: string;
+  stages: string[];
 }
 
 export interface StageTime {
@@ -21,9 +21,14 @@ export interface StageTime {
 
 export async function createManufacturingOrder(
   manufacturingNumber: string,
+  stages: string[]
 ): Promise<ManufacturingOrder> {
   if (!manufacturingNumber?.trim()) {
     throw new Error('El número de fabricación es requerido');
+  }
+
+  if (!stages?.length) {
+    throw new Error('Debes seleccionar al menos una etapa');
   }
 
   const { data: { session }, error: sessionError } = await supabase.auth.getSession();
@@ -53,8 +58,8 @@ export async function createManufacturingOrder(
       .insert([
         {
           manufacturing_number: manufacturingNumber.trim(),
-          bicycle_model: manufacturingNumber.trim(), // Use manufacturing number as the model
-          current_stage: 'sticker',
+          current_stage: stages[0],
+          stages: stages,
           user_id: session.user.id
         }
       ])

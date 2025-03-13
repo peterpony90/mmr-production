@@ -21,8 +21,9 @@ const stageNames: Record<string, string> = {
 
 const ITEMS_PER_PAGE = 10;
 
-const formatTime = (ms: number): string => {
-  if (!ms) return '00:00.00';
+const formatTime = (ms: number | null): string => {
+  if (ms === null || ms === undefined) return '-';
+  if (ms === 0) return '-';
   const minutes = Math.floor(ms / 60000);
   const seconds = Math.floor((ms % 60000) / 1000);
   const centiseconds = Math.floor((ms % 1000) / 10);
@@ -69,17 +70,19 @@ export function ManufacturingOrdersList({ orders, onSelectOrder, totalTimes, onD
   };
 
   const handleExportToExcel = () => {
-    const data = orders.map(order => ({
-      'Número de O. fabricación': order.manufacturing_number,
-      'Modelo': order.bicycle_model,
-      'Fecha inicio': formatDate(order.created_at),
-      'Etapa actual': stageNames[order.current_stage],
-      'Tiempo Total': formatTime(totalTimes[order.id]?.total || 0),
-      'Tiempo Pegatinado': formatTime(totalTimes[order.id]?.stages?.sticker || 0),
-      'Tiempo Corte y cableado': formatTime(totalTimes[order.id]?.stages?.cutting || 0),
-      'Tiempo Montaje': formatTime(totalTimes[order.id]?.stages?.assembly || 0),
-      'Tiempo Embalaje': formatTime(totalTimes[order.id]?.stages?.packaging || 0)
-    }));
+    const data = orders.map(order => {
+      const times = totalTimes[order.id]?.stages || {};
+      return {
+        'Número de O. fabricación': order.manufacturing_number,
+        'Fecha inicio': formatDate(order.created_at),
+        'Etapa actual': stageNames[order.current_stage],
+        'Tiempo Total': formatTime(totalTimes[order.id]?.total || 0),
+        'Tiempo Pegatinado': formatTime(times.sticker || null),
+        'Tiempo Corte y cableado': formatTime(times.cutting || null),
+        'Tiempo Montaje': formatTime(times.assembly || null),
+        'Tiempo Embalaje': formatTime(times.packaging || null)
+      };
+    });
 
     const ws = utils.json_to_sheet(data);
     const wb = utils.book_new();
@@ -87,7 +90,6 @@ export function ManufacturingOrdersList({ orders, onSelectOrder, totalTimes, onD
     
     const colWidths = [
       { wch: 25 }, // Número de O. fabricación
-      { wch: 20 }, // Modelo
       { wch: 20 }, // Fecha inicio
       { wch: 15 }, // Etapa actual
       { wch: 15 }, // Tiempo Total
@@ -106,7 +108,11 @@ export function ManufacturingOrdersList({ orders, onSelectOrder, totalTimes, onD
   };
 
   const getStageStatus = (order: ManufacturingOrder, stage: string) => {
-    const stages = ['sticker', 'cutting', 'assembly', 'packaging'];
+    if (!order.stages.includes(stage)) {
+      return 'not-included';
+    }
+
+    const stages = order.stages;
     const currentIndex = stages.indexOf(order.current_stage);
     const stageIndex = stages.indexOf(stage);
 
@@ -160,9 +166,6 @@ export function ManufacturingOrdersList({ orders, onSelectOrder, totalTimes, onD
                 Nº O. Fabricación
               </th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Modelo
-              </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                 Fecha Inicio
               </th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -196,15 +199,12 @@ export function ManufacturingOrdersList({ orders, onSelectOrder, totalTimes, onD
                     {order.manufacturing_number}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                    {order.bicycle_model}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                     {formatDate(order.created_at)}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                     <div className="flex items-center gap-2">
                       <Timer className="w-4 h-4" />
-                      {formatTime(totalTimes[order.id]?.total || 0)}
+                      {formatTime(totalTimes[order.id]?.total || null)}
                     </div>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
@@ -233,7 +233,11 @@ export function ManufacturingOrdersList({ orders, onSelectOrder, totalTimes, onD
                         <h4 className="font-medium text-gray-900">Tiempos por etapa:</h4>
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                           {['sticker', 'cutting', 'assembly', 'packaging'].map((stage) => {
+                            if (!order.stages.includes(stage)) return null;
+                            
                             const status = getStageStatus(order, stage);
+                            const time = totalTimes[order.id]?.stages[stage];
+                            
                             return (
                               <div
                                 key={stage}
@@ -250,7 +254,7 @@ export function ManufacturingOrdersList({ orders, onSelectOrder, totalTimes, onD
                                 </div>
                                 <div className="flex items-center gap-2 text-gray-700">
                                   <Timer className="w-4 h-4" />
-                                  {formatTime(totalTimes[order.id]?.stages[stage] || 0)}
+                                  {formatTime(time || null)}
                                 </div>
                               </div>
                             );
