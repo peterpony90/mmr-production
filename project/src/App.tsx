@@ -338,6 +338,7 @@ function App() {
                   setCompletedStages(new Set());
                   setElapsedTime(0);
                   setStartTime(null);
+                  setManufacturingNumber(''); // Clear manufacturing number
                   setCurrentView('new-order');
                 }}
                 className="flex items-center gap-2 px-6 py-3 text-white bg-[#b41826] rounded-md hover:bg-[#a01522]"
@@ -489,7 +490,10 @@ function App() {
 
           {currentView === 'menu' && (
             <MainMenu
-              onNewOrder={() => setCurrentView('new-order')}
+              onNewOrder={() => {
+                setManufacturingNumber(''); // Clear manufacturing number when going to new order view
+                setCurrentView('new-order');
+              }}
               onViewOrders={() => setCurrentView('view-orders')}
             />
           )}
@@ -527,7 +531,10 @@ function App() {
                   <div className="flex justify-between">
                     <button
                       type="button"
-                      onClick={() => setCurrentView('menu')}
+                      onClick={() => {
+                        setManufacturingNumber(''); // Clear manufacturing number when going back to menu
+                        setCurrentView('menu');
+                      }}
                       className="inline-flex justify-center py-2 px-4 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500"
                     >
                       <ArrowLeft className="mr-2 h-4 w-4" />
@@ -551,7 +558,10 @@ function App() {
             <div className="max-w-4xl mx-auto">
               <div className="mb-6">
                 <button
-                  onClick={() => setCurrentView('menu')}
+                  onClick={() => {
+                    setManufacturingNumber(''); // Clear manufacturing number when going back to menu
+                    setCurrentView('menu');
+                  }}
                   className="inline-flex items-center px-4 py-2 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50"
                 >
                   <ArrowLeft className="mr-2 h-4 w-4" />
