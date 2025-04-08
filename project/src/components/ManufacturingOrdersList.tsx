@@ -1,12 +1,12 @@
 import React, { useState } from 'react';
-import { Download, ChevronLeft, ChevronRight, Timer, Trash2, ChevronDown, ChevronUp, Eye } from 'lucide-react';
+import { Download, ChevronLeft, ChevronRight, Timer, Trash2, ChevronDown, ChevronUp, Eye, User } from 'lucide-react';
 import type { ManufacturingOrder } from '../lib/database';
 import { utils, writeFile } from 'xlsx';
 
 interface Props {
   orders: ManufacturingOrder[];
   onSelectOrder: (order: ManufacturingOrder) => void;
-  totalTimes: Record<string, { total: number, stages: Record<string, number> }>;
+  totalTimes: Record<string, { total: number, stages: Record<string, number>, users: Record<string, string> }>;
   onDeleteAll: () => Promise<void>;
 }
 
@@ -22,7 +22,6 @@ const formatTime = (ms: number | null): string => {
   if (ms === null || ms === undefined) return '-';
   if (ms === 0) return '-';
   const minutes = Math.floor(ms / 60000);
-  
   const seconds = Math.floor((ms % 60000) / 1000);
   const centiseconds = Math.floor((ms % 1000) / 10);
   return `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}.${centiseconds.toString().padStart(2, '0')}`;
@@ -70,12 +69,14 @@ export function ManufacturingOrdersList({ orders, onSelectOrder, totalTimes, onD
   const handleExportToExcel = () => {
     const data = orders.map(order => {
       const times = totalTimes[order.id]?.stages || {};
+      const users = totalTimes[order.id]?.users || {};
       return {
         'Número de O. fabricación': order.manufacturing_number,
         'Fecha inicio': formatDate(order.created_at),
         'Etapa actual': stageNames[order.current_stage],
         'Tiempo Total': formatTime(totalTimes[order.id]?.total || null),
-        'Tiempo Montaje': formatTime(times.assembly || null)
+        'Tiempo Montaje': formatTime(times.assembly || null),
+        'Usuario': users.assembly || '-'
       };
     });
 
@@ -88,7 +89,8 @@ export function ManufacturingOrdersList({ orders, onSelectOrder, totalTimes, onD
       { wch: 20 }, // Fecha inicio
       { wch: 15 }, // Etapa actual
       { wch: 15 }, // Tiempo Total
-      { wch: 15 }  // Tiempo Montaje
+      { wch: 15 }, // Tiempo Montaje
+      { wch: 20 }  // Usuario
     ];
     ws['!cols'] = colWidths;
 
@@ -167,6 +169,9 @@ export function ManufacturingOrdersList({ orders, onSelectOrder, totalTimes, onD
                 Etapa Actual
               </th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                Usuario
+              </th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                 Acciones
               </th>
             </tr>
@@ -209,6 +214,12 @@ export function ManufacturingOrdersList({ orders, onSelectOrder, totalTimes, onD
                     </span>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                    <div className="flex items-center gap-2">
+                      <User className="w-4 h-4" />
+                      {totalTimes[order.id]?.users.assembly || '-'}
+                    </div>
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                     <button
                       onClick={() => onSelectOrder(order)}
                       className="flex items-center gap-2 text-[#b41826] hover:text-[#a01522] font-medium"
@@ -237,9 +248,15 @@ export function ManufacturingOrdersList({ orders, onSelectOrder, totalTimes, onD
                               <div className="font-medium text-gray-900 mb-2">
                                 {stageNames['assembly']}
                               </div>
-                              <div className="flex items-center gap-2 text-gray-700">
-                                <Timer className="w-4 h-4" />
-                                {formatTime(totalTimes[order.id]?.stages.assembly || null)}
+                              <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-2 text-gray-700">
+                                  <Timer className="w-4 h-4" />
+                                  {formatTime(totalTimes[order.id]?.stages.assembly || null)}
+                                </div>
+                                <div className="flex items-center gap-2 text-gray-700">
+                                  <User className="w-4 h-4" />
+                                  {totalTimes[order.id]?.users.assembly || '-'}
+                                </div>
                               </div>
                             </div>
                           )}

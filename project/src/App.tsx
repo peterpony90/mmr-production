@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { ArrowRight, ArrowLeft, Mail, Lock, LogOut, Play, Square, Timer, CheckCircle, ChevronRight, ClipboardList, Home, Camera } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { ArrowRight, ArrowLeft, Mail, Lock, LogOut, Play, Square, Timer, CheckCircle, ChevronRight, ClipboardList, Home } from 'lucide-react';
 import { signIn, signUp, signOut, getSession } from './lib/auth';
 import { createManufacturingOrder, updateManufacturingOrderStage, saveStageTime, getManufacturingOrders, getAllStageTimes, deleteAllManufacturingOrders } from './lib/database';
 import type { AuthError } from './lib/auth';
@@ -7,7 +7,6 @@ import type { Session } from '@supabase/supabase-js';
 import type { ManufacturingOrder } from './lib/database';
 import { ManufacturingOrdersList } from './components/ManufacturingOrdersList';
 import { MainMenu } from './components/MainMenu';
-import { BarcodeScanner } from './components/BarcodeScanner';
 
 type Stage = 'assembly' | 'summary';
 type View = 'menu' | 'new-order' | 'view-orders' | 'production';
@@ -34,6 +33,7 @@ const stageConfig: Record<Stage, StageInfo> = {
 };
 
 function App() {
+  const manufacturingNumberRef = useRef<HTMLInputElement>(null);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
@@ -53,8 +53,7 @@ function App() {
   const [completedStages, setCompletedStages] = useState<Set<Stage>>(new Set());
   const [currentOrder, setCurrentOrder] = useState<ManufacturingOrder | null>(null);
   const [orders, setOrders] = useState<ManufacturingOrder[]>([]);
-  const [totalTimes, setTotalTimes] = useState<Record<string, { total: number, stages: Record<string, number> }>>({});
-  const [showScanner, setShowScanner] = useState(false);
+  const [totalTimes, setTotalTimes] = useState<Record<string, { total: number, stages: Record<string, number>, users: Record<string, string> }>>({});
 
   useEffect(() => {
     getSession().then(setSession).catch(console.error);
@@ -79,6 +78,12 @@ function App() {
       }
     };
   }, [isTimerRunning, startTime]);
+
+  useEffect(() => {
+    if (currentView === 'new-order' && manufacturingNumberRef.current) {
+      manufacturingNumberRef.current.focus();
+    }
+  }, [currentView]);
 
   const loadOrders = async () => {
     try {
@@ -140,6 +145,13 @@ function App() {
     e.preventDefault();
     setFormError(null);
     try {
+      // Reset all times and states before creating new order
+      setElapsedTime(0);
+      setStartTime(null);
+      setIsTimerRunning(false);
+      setStageTimes({ assembly: 0 });
+      setCompletedStages(new Set());
+      
       const order = await createManufacturingOrder(manufacturingNumber, ['assembly']);
       setCurrentOrder(order);
       setCurrentStage('assembly');
@@ -181,6 +193,9 @@ function App() {
       setCompletedStages(prev => new Set([...prev, currentStage]));
       await saveStageTime(currentOrder.id, currentStage, time);
       await loadOrders();
+      
+      // Automatically move to summary stage after stopping
+      await handleStageChange('summary');
     }
   };
 
@@ -492,34 +507,18 @@ function App() {
                     <label htmlFor="manufacturingNumber" className="block text-sm font-medium text-gray-700">
                       Número de fabricación
                     </label>
-                    <div className="mt-1 relative">
+                    <div className="mt-1">
                       <input
+                        ref={manufacturingNumberRef}
                         type="text"
                         id="manufacturingNumber"
                         value={manufacturingNumber}
                         onChange={(e) => setManufacturingNumber(e.target.value)}
-                        className="block w-full rounded-md border-gray-300 shadow-sm focus:border-[#b41826] focus:ring-[#b41826] sm:text-sm pr-10"
+                        className="block w-full rounded-md border-gray-300 shadow-sm focus:border-[#b41826] focus:ring-[#b41826] sm:text-sm"
                         required
                       />
-                      <button
-                        type="button"
-                        onClick={() => setShowScanner(true)}
-                        className="absolute inset-y-0 right-0 px-3 flex items-center bg-gray-100 rounded-r-md hover:bg-gray-200 focus:outline-none"
-                      >
-                        <Camera className="h-4 w-4 text-gray-600" />
-                      </button>
                     </div>
                   </div>
-
-                  {showScanner && (
-                    <BarcodeScanner
-                      onScan={(result) => {
-                        setManufacturingNumber(result);
-                        setShowScanner(false);
-                      }}
-                      onClose={() => setShowScanner(false)}
-                    />
-                  )}
 
                   {formError && (
                     <div className="text-red-600 text-sm">{formError}</div>
