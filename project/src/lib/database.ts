@@ -19,6 +19,12 @@ export interface StageTime {
   user_id: string;
 }
 
+export interface Profile {
+  id: string;
+  email: string;
+  name: string;
+}
+
 export async function createManufacturingOrder(
   manufacturingNumber: string,
   stages: string[]
@@ -169,36 +175,46 @@ export async function getManufacturingOrders(): Promise<ManufacturingOrder[]> {
   return data;
 }
 
-export async function getAllStageTimes(): Promise<Record<string, { total: number, stages: Record<string, number> }>> {
-  const { data, error } = await supabase
+export async function getAllStageTimes(): Promise<Record<string, { total: number, stages: Record<string, number>, users: Record<string, string> }>> {
+  const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+  
+  if (sessionError || !session) {
+    throw new Error('No se ha podido autenticar. Por favor, inicie sesión de nuevo.');
+  }
+
+  // Get stage times with user information - fixed the join relationship
+  const { data: stageTimes, error: stageTimesError } = await supabase
     .from('stage_times')
     .select(`
-      id,
-      order_id,
-      stage,
-      time_ms
+      *,
+      profiles:user_id (
+        email,
+        name
+      )
     `);
 
-  if (error) throw error;
+  if (stageTimesError) throw stageTimesError;
 
-  const result: Record<string, { total: number, stages: Record<string, number> }> = {};
+  const result: Record<string, { total: number, stages: Record<string, number>, users: Record<string, string> }> = {};
 
   // Process each time record
-  data.forEach(time => {
+  stageTimes.forEach((time: any) => {
     if (!result[time.order_id]) {
       result[time.order_id] = {
         total: 0,
         stages: {
-          sticker: 0,
-          cutting: 0,
-          assembly: 0,
-          packaging: 0
-        }
+          assembly: 0
+        },
+        users: {}
       };
     }
 
     // Store the time for this stage
     result[time.order_id].stages[time.stage] = time.time_ms;
+    
+    // Store the user who registered the time - updated to use the direct profiles relationship
+    const userName = time.profiles?.name || time.profiles?.email?.split('@')[0] || 'Usuario desconocido';
+    result[time.order_id].users[time.stage] = userName;
   });
 
   // Calculate totals after all stages are processed
