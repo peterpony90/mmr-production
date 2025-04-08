@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { ArrowRight, ArrowLeft, Mail, Lock, LogOut, Play, Square, Timer, CheckCircle, ChevronRight, ClipboardList, Home } from 'lucide-react';
+import { ArrowRight, ArrowLeft, Mail, Lock, LogOut, Play, Square, Timer, CheckCircle, ChevronRight, ClipboardList, Home, Pause } from 'lucide-react';
 import { signIn, signUp, signOut, getSession } from './lib/auth';
 import { createManufacturingOrder, updateManufacturingOrderStage, saveStageTime, getManufacturingOrders, getAllStageTimes, deleteAllManufacturingOrders } from './lib/database';
 import type { AuthError } from './lib/auth';
@@ -45,7 +45,9 @@ function App() {
   const [manufacturingNumber, setManufacturingNumber] = useState('');
   const [currentStage, setCurrentStage] = useState<Stage>('assembly');
   const [isTimerRunning, setIsTimerRunning] = useState(false);
+  const [isPaused, setIsPaused] = useState(false);
   const [startTime, setStartTime] = useState<number | null>(null);
+  const [pausedTime, setPausedTime] = useState<number>(0);
   const [elapsedTime, setElapsedTime] = useState<number>(0);
   const [stageTimes, setStageTimes] = useState<StageTime>({
     assembly: 0
@@ -67,9 +69,9 @@ function App() {
 
   useEffect(() => {
     let intervalId: number;
-    if (isTimerRunning && startTime !== null) {
+    if (isTimerRunning && startTime !== null && !isPaused) {
       intervalId = window.setInterval(() => {
-        setElapsedTime(Date.now() - startTime);
+        setElapsedTime(Date.now() - startTime + pausedTime);
       }, 10);
     }
     return () => {
@@ -77,7 +79,7 @@ function App() {
         clearInterval(intervalId);
       }
     };
-  }, [isTimerRunning, startTime]);
+  }, [isTimerRunning, startTime, isPaused, pausedTime]);
 
   useEffect(() => {
     if (currentView === 'new-order' && manufacturingNumberRef.current) {
@@ -128,7 +130,9 @@ function App() {
       setCurrentOrder(null);
       setCurrentStage('assembly');
       setIsTimerRunning(false);
+      setIsPaused(false);
       setElapsedTime(0);
+      setPausedTime(0);
       setStartTime(null);
       setStageTimes({
         assembly: 0
@@ -147,8 +151,10 @@ function App() {
     try {
       // Reset all times and states before creating new order
       setElapsedTime(0);
+      setPausedTime(0);
       setStartTime(null);
       setIsTimerRunning(false);
+      setIsPaused(false);
       setStageTimes({ assembly: 0 });
       setCompletedStages(new Set());
       
@@ -177,13 +183,29 @@ function App() {
   const handleStartTimer = () => {
     if (!completedStages.has(currentStage)) {
       setIsTimerRunning(true);
+      setIsPaused(false);
       setStartTime(Date.now());
-      setElapsedTime(0);
+      setElapsedTime(pausedTime);
+    }
+  };
+
+  const handlePauseTimer = () => {
+    if (isTimerRunning && !isPaused) {
+      setIsPaused(true);
+      setPausedTime(elapsedTime);
+    }
+  };
+
+  const handleResumeTimer = () => {
+    if (isTimerRunning && isPaused) {
+      setIsPaused(false);
+      setStartTime(Date.now());
     }
   };
 
   const handleStopTimer = async () => {
     setIsTimerRunning(false);
+    setIsPaused(false);
     if (currentStage !== 'summary' && currentOrder && !completedStages.has(currentStage)) {
       const time = elapsedTime;
       setStageTimes(prev => ({
@@ -205,9 +227,6 @@ function App() {
       await loadOrders();
     }
     setCurrentStage(newStage);
-    setIsTimerRunning(false);
-    setElapsedTime(0);
-    setStartTime(null);
   };
 
   const handleSelectOrder = (order: ManufacturingOrder) => {
@@ -230,11 +249,7 @@ function App() {
   };
 
   const handleGoToMenu = () => {
-    setCurrentOrder(null);
-    setCurrentStage('assembly');
-    setIsTimerRunning(false);
-    setElapsedTime(0);
-    setStartTime(null);
+    // Only update the view, maintain all other state
     setCurrentView('menu');
   };
 
@@ -332,11 +347,13 @@ function App() {
                   setCurrentOrder(null);
                   setCurrentStage('assembly');
                   setIsTimerRunning(false);
+                  setIsPaused(false);
                   setStageTimes({
                     assembly: 0
                   });
                   setCompletedStages(new Set());
                   setElapsedTime(0);
+                  setPausedTime(0);
                   setStartTime(null);
                   setManufacturingNumber(''); // Clear manufacturing number
                   setCurrentView('new-order');
@@ -387,13 +404,33 @@ function App() {
               )}
               
               {!isStageCompleted && isTimerRunning && (
-                <button
-                  onClick={handleStopTimer}
-                  className="flex items-center gap-2 px-6 py-3 text-white bg-red-600 rounded-md hover:bg-red-700"
-                >
-                  <Square className="w-5 h-5" />
-                  Detener
-                </button>
+                <>
+                  {!isPaused ? (
+                    <button
+                      onClick={handlePauseTimer}
+                      className="flex items-center gap-2 px-6 py-3 text-white bg-yellow-600 rounded-md hover:bg-yellow-700"
+                    >
+                      <Pause className="w-5 h-5" />
+                      Pausar
+                    </button>
+                  ) : (
+                    <button
+                      onClick={handleResumeTimer}
+                      className="flex items-center gap-2 px-6 py-3 text-white bg-green-600 rounded-md hover:bg-green-700"
+                    >
+                      <Play className="w-5 h-5" />
+                      Reanudar
+                    </button>
+                  )}
+                  
+                  <button
+                    onClick={handleStopTimer}
+                    className="flex items-center gap-2 px-6 py-3 text-white bg-red-600 rounded-md hover:bg-red-700"
+                  >
+                    <Square className="w-5 h-5" />
+                    Detener
+                  </button>
+                </>
               )}
 
               {isStageCompleted && (
