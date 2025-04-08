@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { ArrowRight, ArrowLeft, Mail, Lock, LogOut, Play, Square, Timer, CheckCircle, ChevronRight, ClipboardList, Home } from 'lucide-react';
+import { ArrowRight, ArrowLeft, Mail, Lock, LogOut, Play, Square, Timer, CheckCircle, ChevronRight, ClipboardList, Home, Camera } from 'lucide-react';
 import { signIn, signUp, signOut, getSession } from './lib/auth';
 import { createManufacturingOrder, updateManufacturingOrderStage, saveStageTime, getManufacturingOrders, getAllStageTimes, deleteAllManufacturingOrders } from './lib/database';
 import type { AuthError } from './lib/auth';
@@ -7,78 +7,30 @@ import type { Session } from '@supabase/supabase-js';
 import type { ManufacturingOrder } from './lib/database';
 import { ManufacturingOrdersList } from './components/ManufacturingOrdersList';
 import { MainMenu } from './components/MainMenu';
+import { BarcodeScanner } from './components/BarcodeScanner';
 
-type Stage = 'form' | 'sticker' | 'cutting' | 'assembly' | 'packaging' | 'summary';
+type Stage = 'assembly' | 'summary';
 type View = 'menu' | 'new-order' | 'view-orders' | 'production';
 
 interface StageTime {
-  sticker: number;
-  cutting: number;
   assembly: number;
-  packaging: number;
 }
 
 interface StageInfo {
   title: string;
   nextStage?: Stage;
   nextButtonText?: string;
-  prevStage?: Stage;
-  prevButtonText?: string;
 }
-
-interface StageConfig {
-  id: Stage;
-  title: string;
-  description: string;
-}
-
-const availableStages: StageConfig[] = [
-  { id: 'sticker', title: 'Pegatinado', description: 'Aplicación de pegatinas y etiquetas' },
-  { id: 'cutting', title: 'Corte y cableado', description: 'Preparación de cables y cortes necesarios' },
-  { id: 'assembly', title: 'Montaje', description: 'Ensamblaje de componentes' },
-  { id: 'packaging', title: 'Embalaje', description: 'Empaquetado final del producto' }
-];
 
 const stageConfig: Record<Stage, StageInfo> = {
-  form: {
-    title: 'Inicio',
-    nextStage: 'sticker',
-  },
-  sticker: {
-    title: 'Pegatinado',
-    nextStage: 'cutting',
-    nextButtonText: 'Corte y cableado'
-  },
-  cutting: {
-    title: 'Corte y cableado',
-    nextStage: 'assembly',
-    nextButtonText: 'Montaje',
-    prevStage: 'sticker',
-    prevButtonText: 'Pegatinado'
-  },
   assembly: {
     title: 'Montaje',
-    nextStage: 'packaging',
-    nextButtonText: 'Embalaje',
-    prevStage: 'cutting',
-    prevButtonText: 'Corte y cableado'
-  },
-  packaging: {
-    title: 'Embalaje',
-    prevStage: 'assembly',
-    prevButtonText: 'Montaje'
+    nextStage: 'summary',
+    nextButtonText: 'Finalizar'
   },
   summary: {
-    title: 'Resumen',
-    prevStage: 'packaging',
+    title: 'Resumen'
   }
-};
-
-const initialStageTime: StageTime = {
-  sticker: 0,
-  cutting: 0,
-  assembly: 0,
-  packaging: 0
 };
 
 function App() {
@@ -91,16 +43,18 @@ function App() {
   const [isSignUp, setIsSignUp] = useState(false);
   const [currentView, setCurrentView] = useState<View>('menu');
   const [manufacturingNumber, setManufacturingNumber] = useState('');
-  const [selectedStages, setSelectedStages] = useState<Set<Stage>>(new Set(['sticker', 'cutting', 'assembly', 'packaging']));
-  const [currentStage, setCurrentStage] = useState<Stage>('form');
+  const [currentStage, setCurrentStage] = useState<Stage>('assembly');
   const [isTimerRunning, setIsTimerRunning] = useState(false);
   const [startTime, setStartTime] = useState<number | null>(null);
   const [elapsedTime, setElapsedTime] = useState<number>(0);
-  const [stageTimes, setStageTimes] = useState<StageTime>(initialStageTime);
+  const [stageTimes, setStageTimes] = useState<StageTime>({
+    assembly: 0
+  });
   const [completedStages, setCompletedStages] = useState<Set<Stage>>(new Set());
   const [currentOrder, setCurrentOrder] = useState<ManufacturingOrder | null>(null);
   const [orders, setOrders] = useState<ManufacturingOrder[]>([]);
   const [totalTimes, setTotalTimes] = useState<Record<string, { total: number, stages: Record<string, number> }>>({});
+  const [showScanner, setShowScanner] = useState(false);
 
   useEffect(() => {
     getSession().then(setSession).catch(console.error);
@@ -165,45 +119,31 @@ function App() {
     try {
       await signOut();
       setSession(null);
-      resetAppState();
+      setCurrentView('menu');
+      setCurrentOrder(null);
+      setCurrentStage('assembly');
+      setIsTimerRunning(false);
+      setElapsedTime(0);
+      setStartTime(null);
+      setStageTimes({
+        assembly: 0
+      });
+      setCompletedStages(new Set());
     } catch (err: any) {
       console.error('Error al cerrar sesión:', err);
-      // Even if there's an error, clear the local state
       setSession(null);
-      resetAppState();
+      setCurrentView('menu');
     }
-  };
-
-  const resetAppState = () => {
-    setCurrentView('menu');
-    setCurrentOrder(null);
-    setCurrentStage('form');
-    setIsTimerRunning(false);
-    setElapsedTime(0);
-    setStartTime(null);
-    setStageTimes(initialStageTime);
-    setCompletedStages(new Set());
-    setManufacturingNumber('');
-    setSelectedStages(new Set(['sticker', 'cutting', 'assembly', 'packaging']));
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setFormError(null);
-
-    if (selectedStages.size === 0) {
-      setFormError('Debes seleccionar al menos una etapa');
-      return;
-    }
-
     try {
-      const order = await createManufacturingOrder(manufacturingNumber, Array.from(selectedStages));
+      const order = await createManufacturingOrder(manufacturingNumber, ['assembly']);
       setCurrentOrder(order);
-      setCurrentStage(Array.from(selectedStages)[0]);
+      setCurrentStage('assembly');
       setCurrentView('production');
-      // Reset stage times and completed stages for the new order
-      setStageTimes(initialStageTime);
-      setCompletedStages(new Set());
       await loadOrders();
     } catch (err: any) {
       if (err.message?.includes('duplicate key value')) {
@@ -244,18 +184,6 @@ function App() {
     }
   };
 
-  const getNextStage = (currentStage: Stage): Stage | undefined => {
-    const stages = Array.from(selectedStages);
-    const currentIndex = stages.indexOf(currentStage as Stage);
-    return stages[currentIndex + 1];
-  };
-
-  const getPrevStage = (currentStage: Stage): Stage | undefined => {
-    const stages = Array.from(selectedStages);
-    const currentIndex = stages.indexOf(currentStage as Stage);
-    return stages[currentIndex - 1];
-  };
-
   const handleStageChange = async (newStage: Stage) => {
     if (currentOrder) {
       await updateManufacturingOrderStage(currentOrder.id, newStage);
@@ -272,34 +200,27 @@ function App() {
     setManufacturingNumber(order.manufacturing_number);
     setCurrentStage(order.current_stage as Stage);
     setCurrentView('production');
-    setSelectedStages(new Set(order.stages as Stage[]));
 
-    // Set the stage times from the total times
     if (totalTimes[order.id]) {
       setStageTimes({
-        sticker: totalTimes[order.id].stages.sticker || 0,
-        cutting: totalTimes[order.id].stages.cutting || 0,
-        assembly: totalTimes[order.id].stages.assembly || 0,
-        packaging: totalTimes[order.id].stages.packaging || 0
+        assembly: totalTimes[order.id].stages.assembly || 0
       });
 
-      // Mark completed stages
       const completed = new Set<Stage>();
-      Object.entries(totalTimes[order.id].stages).forEach(([stage, time]) => {
-        if (time > 0) {
-          completed.add(stage as Stage);
-        }
-      });
+      if (totalTimes[order.id].stages.assembly > 0) {
+        completed.add('assembly');
+      }
       setCompletedStages(completed);
-    } else {
-      // Reset times and completed stages if no times exist
-      setStageTimes(initialStageTime);
-      setCompletedStages(new Set());
     }
   };
 
   const handleGoToMenu = () => {
-    resetAppState();
+    setCurrentOrder(null);
+    setCurrentStage('assembly');
+    setIsTimerRunning(false);
+    setElapsedTime(0);
+    setStartTime(null);
+    setCurrentView('menu');
   };
 
   const handleDeleteAll = async () => {
@@ -313,14 +234,12 @@ function App() {
   };
 
   const getTotalTime = (): number => {
-    return Object.entries(stageTimes)
-      .filter(([stage]) => selectedStages.has(stage as Stage))
-      .reduce((acc, [, time]) => acc + time, 0);
+    return stageTimes.assembly;
   };
 
   const renderBreadcrumbs = () => {
-    const stages = Array.from(selectedStages);
-    const currentIndex = stages.indexOf(currentStage as Stage);
+    const stages: Stage[] = ['assembly', 'summary'];
+    const currentIndex = stages.indexOf(currentStage);
 
     return (
       <nav className="mb-6">
@@ -363,7 +282,7 @@ function App() {
             <CheckCircle className="w-16 h-16" />
           </div>
           
-          <h1 className="text-3xl font-bold text-center mb-2">{currentOrder?.manufacturing_number}</h1>
+          <h1 className="text-3xl font-bold text-center mb-2">Orden Completada</h1>
           <h2 className="text-xl font-semibold text-center text-gray-600 mb-8">
             Número de fabricación: {manufacturingNumber}
           </h2>
@@ -377,15 +296,11 @@ function App() {
 
             <div className="bg-gray-50 rounded-lg p-6">
               <h3 className="text-xl font-semibold text-gray-800 mb-4">
-                Tiempos por Etapa
+                Tiempo de Montaje
               </h3>
-              <div className="space-y-3">
-                {Array.from(selectedStages).map(stage => (
-                  <div key={stage} className="flex justify-between items-center">
-                    <span className="text-gray-600">{stageConfig[stage].title}:</span>
-                    <span className="font-mono">{formatTime(stageTimes[stage])}</span>
-                  </div>
-                ))}
+              <div className="flex justify-between items-center">
+                <span className="text-gray-600">Montaje:</span>
+                <span className="font-mono">{formatTime(stageTimes.assembly)}</span>
               </div>
             </div>
 
@@ -399,7 +314,15 @@ function App() {
               </button>
               <button
                 onClick={() => {
-                  resetAppState();
+                  setCurrentOrder(null);
+                  setCurrentStage('assembly');
+                  setIsTimerRunning(false);
+                  setStageTimes({
+                    assembly: 0
+                  });
+                  setCompletedStages(new Set());
+                  setElapsedTime(0);
+                  setStartTime(null);
                   setCurrentView('new-order');
                 }}
                 className="flex items-center gap-2 px-6 py-3 text-white bg-[#b41826] rounded-md hover:bg-[#a01522]"
@@ -424,8 +347,6 @@ function App() {
     if (!currentStageConfig) return null;
 
     const isStageCompleted = completedStages.has(currentStage);
-    const nextStage = getNextStage(currentStage);
-    const prevStage = getPrevStage(currentStage);
 
     return (
       <div className="max-w-3xl mx-auto">
@@ -469,27 +390,12 @@ function App() {
 
             <div className="space-y-4">
               <div className="flex justify-center gap-4">
-                {prevStage && (
+                {currentStage === 'assembly' && isStageCompleted && (
                   <button
-                    onClick={() => handleStageChange(prevStage)}
-                    className="flex items-center gap-2 px-6 py-3 text-white bg-gray-600 rounded-md hover:bg-gray-700"
-                  >
-                    <ArrowLeft className="w-5 h-5" />
-                    {stageConfig[prevStage].title}
-                  </button>
-                )}
-
-                {nextStage ? (
-                  <button
-                    onClick={() => handleStageChange(nextStage)}
-                    className="flex items-center gap-2 px-6 py-3 text-white bg-[#b41826] rounded-md hover:bg-[#a01522]"
-                  >
-                    {stageConfig[nextStage].title}
-                    <ArrowRight className="w-5 h-5" />
-                  </button>
-                ) : (
-                  <button
-                    onClick={() => handleStageChange('summary')}
+                    onClick={() => {
+                      handleStopTimer();
+                      handleStageChange('summary');
+                    }}
                     className="flex items-center gap-2 px-6 py-3 text-white bg-green-600 rounded-md hover:bg-green-700"
                   >
                     Finalizar
@@ -583,54 +489,37 @@ function App() {
                 
                 <form onSubmit={handleSubmit} className="space-y-6">
                   <div>
-                    <label htmlFor="manufacturingNumber" className="block text-lg font-medium text-gray-700 mb-2">
+                    <label htmlFor="manufacturingNumber" className="block text-sm font-medium text-gray-700">
                       Número de fabricación
                     </label>
-                    <textarea
-                      id="manufacturingNumber"
-                      value={manufacturingNumber}
-                      onChange={(e) => setManufacturingNumber(e.target.value)}
-                      className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-[#b41826] focus:ring-[#b41826] text-lg"
-                      rows={3}
-                      required
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-lg font-medium text-gray-700 mb-4">
-                      Etapas a realizar
-                    </label>
-                    <div className="space-y-4">
-                      {availableStages.map((stage) => (
-                        <div key={stage.id} className="flex items-start">
-                          <div className="flex items-center h-5">
-                            <input
-                              type="checkbox"
-                              checked={selectedStages.has(stage.id)}
-                              onChange={(e) => {
-                                const newSelectedStages = new Set(selectedStages);
-                                if (e.target.checked) {
-                                  newSelectedStages.add(stage.id);
-                                } else {
-                                  newSelectedStages.delete(stage.id);
-                                }
-                                setSelectedStages(newSelectedStages);
-                              }}
-                              className="h-4 w-4 text-[#b41826] border-gray-300 rounded focus:ring-[#b41826]"
-                            />
-                          </div>
-                          <div className="ml-3">
-                            <label className="text-base font-medium text-gray-700">
-                              {stage.title}
-                            </label>
-                            <p className="text-sm text-gray-500">
-                              {stage.description}
-                            </p>
-                          </div>
-                        </div>
-                      ))}
+                    <div className="mt-1 relative">
+                      <input
+                        type="text"
+                        id="manufacturingNumber"
+                        value={manufacturingNumber}
+                        onChange={(e) => setManufacturingNumber(e.target.value)}
+                        className="block w-full rounded-md border-gray-300 shadow-sm focus:border-[#b41826] focus:ring-[#b41826] sm:text-sm pr-10"
+                        required
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowScanner(true)}
+                        className="absolute inset-y-0 right-0 px-3 flex items-center bg-gray-100 rounded-r-md hover:bg-gray-200 focus:outline-none"
+                      >
+                        <Camera className="h-4 w-4 text-gray-600" />
+                      </button>
                     </div>
                   </div>
+
+                  {showScanner && (
+                    <BarcodeScanner
+                      onScan={(result) => {
+                        setManufacturingNumber(result);
+                        setShowScanner(false);
+                      }}
+                      onClose={() => setShowScanner(false)}
+                    />
+                  )}
 
                   {formError && (
                     <div className="text-red-600 text-sm">{formError}</div>

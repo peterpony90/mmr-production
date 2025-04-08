@@ -12,10 +12,7 @@ interface Props {
 
 const stageNames: Record<string, string> = {
   form: 'Inicio',
-  sticker: 'Pegatinado',
-  cutting: 'Corte y cableado',
   assembly: 'Montaje',
-  packaging: 'Embalaje',
   summary: 'Finalizado'
 };
 
@@ -25,6 +22,7 @@ const formatTime = (ms: number | null): string => {
   if (ms === null || ms === undefined) return '-';
   if (ms === 0) return '-';
   const minutes = Math.floor(ms / 60000);
+  
   const seconds = Math.floor((ms % 60000) / 1000);
   const centiseconds = Math.floor((ms % 1000) / 10);
   return `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}.${centiseconds.toString().padStart(2, '0')}`;
@@ -76,11 +74,8 @@ export function ManufacturingOrdersList({ orders, onSelectOrder, totalTimes, onD
         'Número de O. fabricación': order.manufacturing_number,
         'Fecha inicio': formatDate(order.created_at),
         'Etapa actual': stageNames[order.current_stage],
-        'Tiempo Total': formatTime(totalTimes[order.id]?.total || 0),
-        'Tiempo Pegatinado': formatTime(times.sticker || null),
-        'Tiempo Corte y cableado': formatTime(times.cutting || null),
-        'Tiempo Montaje': formatTime(times.assembly || null),
-        'Tiempo Embalaje': formatTime(times.packaging || null)
+        'Tiempo Total': formatTime(totalTimes[order.id]?.total || null),
+        'Tiempo Montaje': formatTime(times.assembly || null)
       };
     });
 
@@ -93,10 +88,7 @@ export function ManufacturingOrdersList({ orders, onSelectOrder, totalTimes, onD
       { wch: 20 }, // Fecha inicio
       { wch: 15 }, // Etapa actual
       { wch: 15 }, // Tiempo Total
-      { wch: 15 }, // Tiempo Pegatinado
-      { wch: 20 }, // Tiempo Corte y cableado
-      { wch: 15 }, // Tiempo Montaje
-      { wch: 15 }  // Tiempo Embalaje
+      { wch: 15 }  // Tiempo Montaje
     ];
     ws['!cols'] = colWidths;
 
@@ -230,35 +222,27 @@ export function ManufacturingOrdersList({ orders, onSelectOrder, totalTimes, onD
                   <tr>
                     <td colSpan={7} className="px-6 py-4 bg-gray-50">
                       <div className="space-y-4">
-                        <h4 className="font-medium text-gray-900">Tiempos por etapa:</h4>
-                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                          {['sticker', 'cutting', 'assembly', 'packaging'].map((stage) => {
-                            if (!order.stages.includes(stage)) return null;
-                            
-                            const status = getStageStatus(order, stage);
-                            const time = totalTimes[order.id]?.stages[stage];
-                            
-                            return (
-                              <div
-                                key={stage}
-                                className={`bg-white p-4 rounded-lg shadow-sm border ${
-                                  status === 'completed'
-                                    ? 'border-green-200 bg-green-50'
-                                    : status === 'current'
-                                    ? 'border-blue-200 bg-blue-50'
-                                    : 'border-gray-200'
-                                }`}
-                              >
-                                <div className="font-medium text-gray-900 mb-2">
-                                  {stageNames[stage]}
-                                </div>
-                                <div className="flex items-center gap-2 text-gray-700">
-                                  <Timer className="w-4 h-4" />
-                                  {formatTime(time || null)}
-                                </div>
+                        <h4 className="font-medium text-gray-900">Tiempo de montaje:</h4>
+                        <div className="grid grid-cols-1 gap-4">
+                          {order.stages.includes('assembly') && (
+                            <div
+                              className={`bg-white p-4 rounded-lg shadow-sm border ${
+                                getStageStatus(order, 'assembly') === 'completed'
+                                  ? 'border-green-200 bg-green-50'
+                                  : getStageStatus(order, 'assembly') === 'current'
+                                  ? 'border-blue-200 bg-blue-50'
+                                  : 'border-gray-200'
+                              }`}
+                            >
+                              <div className="font-medium text-gray-900 mb-2">
+                                {stageNames['assembly']}
                               </div>
-                            );
-                          })}
+                              <div className="flex items-center gap-2 text-gray-700">
+                                <Timer className="w-4 h-4" />
+                                {formatTime(totalTimes[order.id]?.stages.assembly || null)}
+                              </div>
+                            </div>
+                          )}
                         </div>
                       </div>
                     </td>
