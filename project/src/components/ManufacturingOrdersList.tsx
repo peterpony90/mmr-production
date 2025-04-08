@@ -11,7 +11,6 @@ interface Props {
 }
 
 const stageNames: Record<string, string> = {
-  form: 'Inicio',
   assembly: 'Montaje',
   summary: 'Finalizado'
 };
@@ -76,7 +75,8 @@ export function ManufacturingOrdersList({ orders, onSelectOrder, totalTimes, onD
         'Etapa actual': stageNames[order.current_stage],
         'Tiempo Total': formatTime(totalTimes[order.id]?.total || null),
         'Tiempo Montaje': formatTime(times.assembly || null),
-        'Usuario': users.assembly || '-'
+        'Usuario': users.assembly || '-',
+        'Creado por': order.profile?.name || order.profile?.email?.split('@')[0] || 'Usuario desconocido'
       };
     });
 
@@ -90,7 +90,8 @@ export function ManufacturingOrdersList({ orders, onSelectOrder, totalTimes, onD
       { wch: 15 }, // Etapa actual
       { wch: 15 }, // Tiempo Total
       { wch: 15 }, // Tiempo Montaje
-      { wch: 20 }  // Usuario
+      { wch: 20 }, // Usuario
+      { wch: 20 }  // Creado por
     ];
     ws['!cols'] = colWidths;
 
@@ -169,7 +170,7 @@ export function ManufacturingOrdersList({ orders, onSelectOrder, totalTimes, onD
                 Etapa Actual
               </th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Usuario
+                Creado por
               </th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                 Acciones
@@ -216,7 +217,7 @@ export function ManufacturingOrdersList({ orders, onSelectOrder, totalTimes, onD
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                     <div className="flex items-center gap-2">
                       <User className="w-4 h-4" />
-                      {totalTimes[order.id]?.users.assembly || '-'}
+                      {order.profile?.name || order.profile?.email?.split('@')[0] || 'Usuario desconocido'}
                     </div>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">

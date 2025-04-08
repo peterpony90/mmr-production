@@ -8,6 +8,10 @@ export interface ManufacturingOrder {
   updated_at: string;
   user_id: string;
   stages: string[];
+  profile?: {
+    name: string;
+    email: string;
+  };
 }
 
 export interface StageTime {
@@ -17,6 +21,10 @@ export interface StageTime {
   time_ms: number;
   created_at: string;
   user_id: string;
+  profile?: {
+    name: string;
+    email: string;
+  };
 }
 
 export interface Profile {
@@ -59,6 +67,7 @@ export async function createManufacturingOrder(
       throw new Error('Este número de fabricación ya existe');
     }
 
+    // Create the new order with profile information
     const { data, error } = await supabase
       .from('manufacturing_orders')
       .insert([
@@ -69,7 +78,13 @@ export async function createManufacturingOrder(
           user_id: session.user.id
         }
       ])
-      .select()
+      .select(`
+        *,
+        profile:profiles (
+          name,
+          email
+        )
+      `)
       .single();
 
     if (error) {
@@ -86,16 +101,13 @@ export async function createManufacturingOrder(
     
     return data;
   } catch (error: any) {
-    // Log the error for debugging
     console.error('Create order error:', error);
     
-    // Handle specific error cases
     if (error.message?.includes('duplicate key value') || 
         error.message?.includes('ya existe')) {
       throw new Error('Este número de fabricación ya existe');
     }
     
-    // Re-throw the error with a user-friendly message
     throw new Error(error.message || 'Error al crear la orden de fabricación');
   }
 }
@@ -106,7 +118,10 @@ export async function updateManufacturingOrderStage(
 ): Promise<void> {
   const { error } = await supabase
     .from('manufacturing_orders')
-    .update({ current_stage: stage, updated_at: new Date().toISOString() })
+    .update({ 
+      current_stage: stage, 
+      updated_at: new Date().toISOString() 
+    })
     .eq('id', orderId);
 
   if (error) throw error;
@@ -168,11 +183,21 @@ export async function getManufacturingOrders(): Promise<ManufacturingOrder[]> {
 
   const { data, error } = await supabase
     .from('manufacturing_orders')
-    .select('*')
+    .select(`
+      *,
+      profile:profiles (
+        name,
+        email
+      )
+    `)
     .order('created_at', { ascending: false });
 
-  if (error) throw error;
-  return data;
+  if (error) {
+    console.error('Error fetching orders:', error);
+    throw error;
+  }
+
+  return data || [];
 }
 
 export async function getAllStageTimes(): Promise<Record<string, { total: number, stages: Record<string, number>, users: Record<string, string> }>> {
@@ -182,18 +207,25 @@ export async function getAllStageTimes(): Promise<Record<string, { total: number
     throw new Error('No se ha podido autenticar. Por favor, inicie sesión de nuevo.');
   }
 
-  // Get stage times with user information - fixed the join relationship
+  // Query stage times with profile information
   const { data: stageTimes, error: stageTimesError } = await supabase
     .from('stage_times')
     .select(`
-      *,
-      profiles:user_id (
-        email,
-        name
+      id,
+      order_id,
+      stage,
+      time_ms,
+      user_id,
+      profile:profiles (
+        name,
+        email
       )
     `);
 
-  if (stageTimesError) throw stageTimesError;
+  if (stageTimesError) {
+    console.error('Error fetching stage times:', stageTimesError);
+    throw stageTimesError;
+  }
 
   const result: Record<string, { total: number, stages: Record<string, number>, users: Record<string, string> }> = {};
 
@@ -212,8 +244,8 @@ export async function getAllStageTimes(): Promise<Record<string, { total: number
     // Store the time for this stage
     result[time.order_id].stages[time.stage] = time.time_ms;
     
-    // Store the user who registered the time - updated to use the direct profiles relationship
-    const userName = time.profiles?.name || time.profiles?.email?.split('@')[0] || 'Usuario desconocido';
+    // Store the user who registered the time
+    const userName = time.profile?.name || time.profile?.email?.split('@')[0] || 'Usuario desconocido';
     result[time.order_id].users[time.stage] = userName;
   });
 
