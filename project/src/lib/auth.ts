@@ -39,25 +39,9 @@ export async function signIn(email: string, password: string): Promise<AuthRespo
 }
 
 export async function signOut() {
-  try {
-    // First check if we have a valid session
-    const { data: { session } } = await supabase.auth.getSession();
-    
-    if (!session) {
-      // If no session exists, clear any local state but don't throw an error
-      await supabase.auth.clearSession();
-      return;
-    }
-
-    const { error } = await supabase.auth.signOut();
-    if (error) {
-      throw {
-        message: error.message || 'Error al cerrar sesión',
-      };
-    }
-  } catch (error: any) {
-    // If there's any error during the process, clear the session
-    await supabase.auth.clearSession();
+  const { error } = await supabase.auth.signOut();
+  if (error) {
+    console.error('Error al cerrar sesión:', error);
     throw error;
   }
 }

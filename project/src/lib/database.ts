@@ -6,8 +6,11 @@ export interface ManufacturingOrder {
   current_stage: string;
   created_at: string;
   updated_at: string;
+  completed_at?: string;
   user_id: string;
   stages: string[];
+  has_incidents?: boolean;
+  incident_description?: string;
   profile?: {
     name: string;
     email: string;
@@ -27,24 +30,56 @@ export interface StageTime {
   };
 }
 
-export interface Profile {
-  id: string;
-  email: string;
-  name: string;
+// Prefijo para identificar órdenes de desarrollo
+const isDevelopment = import.meta.env.DEV;
+const DEV_PREFIX = 'DEV-';
+
+// Función para generar el número de tarea con contador
+async function generateTaskNumber(): Promise<string> {
+  const date = new Date();
+  const year = date.getFullYear().toString().slice(-2);
+  const month = (date.getMonth() + 1).toString().padStart(2, '0');
+  const day = date.getDate().toString().padStart(2, '0');
+  
+  // Obtener todas las tareas del día actual para calcular el siguiente número
+  const startOfDay = new Date(date.getFullYear(), date.getMonth(), date.getDate()).toISOString();
+  const endOfDay = new Date(date.getFullYear(), date.getMonth(), date.getDate() + 1).toISOString();
+  
+  const { data: todaysTasks, error } = await supabase
+    .from('manufacturing_orders')
+    .select('manufacturing_number')
+    .gte('created_at', startOfDay)
+    .lt('created_at', endOfDay)
+    .like('manufacturing_number', `Tarea_%_${year}${month}${day}`);
+
+  if (error) {
+    console.error('Error fetching today\'s tasks:', error);
+    throw new Error('Error al generar el número de tarea');
+  }
+
+  // Encontrar el número más alto usado hoy
+  let maxNumber = 0;
+  if (todaysTasks) {
+    todaysTasks.forEach(task => {
+      const match = task.manufacturing_number.match(/Tarea_(\d+)_/);
+      if (match) {
+        const num = parseInt(match[1], 10);
+        if (!isNaN(num) && num > maxNumber) {
+          maxNumber = num;
+        }
+      }
+    });
+  }
+
+  // Generar el siguiente número
+  const nextNumber = (maxNumber + 1).toString().padStart(2, '0');
+  return `Tarea_${nextNumber}_${year}${month}${day}`;
 }
 
 export async function createManufacturingOrder(
   manufacturingNumber: string,
   stages: string[]
 ): Promise<ManufacturingOrder> {
-  if (!manufacturingNumber?.trim()) {
-    throw new Error('El número de fabricación es requerido');
-  }
-
-  if (!stages?.length) {
-    throw new Error('Debes seleccionar al menos una etapa');
-  }
-
   const { data: { session }, error: sessionError } = await supabase.auth.getSession();
   
   if (sessionError || !session) {
@@ -52,27 +87,33 @@ export async function createManufacturingOrder(
   }
 
   try {
-    // Check if manufacturing number already exists
-    const { data: existingOrders, error: checkError } = await supabase
+    // Si el número empieza con "SIN-", generar un número de tarea con el formato correcto
+    const finalNumber = manufacturingNumber.startsWith('SIN-') 
+      ? await generateTaskNumber()
+      : manufacturingNumber.trim();
+
+    // Verificar si el número ya existe
+    const { data: existingOrder, error: checkError } = await supabase
       .from('manufacturing_orders')
       .select('id')
-      .eq('manufacturing_number', manufacturingNumber.trim());
+      .eq('manufacturing_number', finalNumber)
+      .single();
 
-    if (checkError) {
-      console.error('Error checking existing orders:', checkError);
+    if (checkError && checkError.code !== 'PGRST116') {
+      console.error('Error checking existing order:', checkError);
       throw new Error('Error al verificar el número de fabricación');
     }
-    
-    if (existingOrders && existingOrders.length > 0) {
+
+    if (existingOrder) {
       throw new Error('Este número de fabricación ya existe');
     }
 
-    // Create the new order with profile information
-    const { data, error } = await supabase
+    // Crear la nueva orden
+    const { data, error: insertError } = await supabase
       .from('manufacturing_orders')
       .insert([
         {
-          manufacturing_number: manufacturingNumber.trim(),
+          manufacturing_number: finalNumber,
           current_stage: stages[0],
           stages: stages,
           user_id: session.user.id
@@ -87,44 +128,50 @@ export async function createManufacturingOrder(
       `)
       .single();
 
-    if (error) {
-      console.error('Error creating order:', error);
-      if (error.code === '23505') { // Unique violation
-        throw new Error('Este número de fabricación ya existe');
-      }
+    if (insertError) {
+      console.error('Error creating order:', insertError);
       throw new Error('Error al crear la orden de fabricación');
     }
 
     if (!data) {
       throw new Error('No se pudo crear la orden de fabricación');
     }
-    
+
     return data;
   } catch (error: any) {
-    console.error('Create order error:', error);
-    
-    if (error.message?.includes('duplicate key value') || 
-        error.message?.includes('ya existe')) {
-      throw new Error('Este número de fabricación ya existe');
-    }
-    
-    throw new Error(error.message || 'Error al crear la orden de fabricación');
+    console.error('Error in createManufacturingOrder:', error);
+    throw error;
   }
 }
 
 export async function updateManufacturingOrderStage(
   orderId: string,
-  stage: string
+  stage: string,
+  hasIncidents: boolean = false,
+  incidentDescription?: string
 ): Promise<void> {
+  const updates: any = { 
+    current_stage: stage,
+    updated_at: new Date().toISOString()
+  };
+
+  if (stage === 'summary') {
+    updates.completed_at = new Date().toISOString();
+    updates.has_incidents = hasIncidents;
+    if (incidentDescription) {
+      updates.incident_description = incidentDescription;
+    }
+  }
+
   const { error } = await supabase
     .from('manufacturing_orders')
-    .update({ 
-      current_stage: stage, 
-      updated_at: new Date().toISOString() 
-    })
+    .update(updates)
     .eq('id', orderId);
 
-  if (error) throw error;
+  if (error) {
+    console.error('Error updating order stage:', error);
+    throw error;
+  }
 }
 
 export async function saveStageTime(
@@ -138,49 +185,22 @@ export async function saveStageTime(
     throw new Error('No se ha podido autenticar. Por favor, inicie sesión de nuevo.');
   }
 
-  // First, check if there's already a time recorded for this stage and order
-  const { data: existingTimes, error: checkError } = await supabase
+  const { error } = await supabase
     .from('stage_times')
-    .select('*')
-    .eq('order_id', orderId)
-    .eq('stage', stage);
+    .insert([{ 
+      order_id: orderId, 
+      stage, 
+      time_ms: timeMs,
+      user_id: session.user.id 
+    }]);
 
-  if (checkError) throw checkError;
-
-  // If a time already exists for this stage, update it
-  if (existingTimes && existingTimes.length > 0) {
-    const { error: updateError } = await supabase
-      .from('stage_times')
-      .update({ 
-        time_ms: timeMs,
-        user_id: session.user.id 
-      })
-      .eq('order_id', orderId)
-      .eq('stage', stage);
-
-    if (updateError) throw updateError;
-  } else {
-    // If no time exists, create a new one
-    const { error: insertError } = await supabase
-      .from('stage_times')
-      .insert([{ 
-        order_id: orderId, 
-        stage, 
-        time_ms: timeMs,
-        user_id: session.user.id 
-      }]);
-
-    if (insertError) throw insertError;
+  if (error) {
+    console.error('Error saving stage time:', error);
+    throw error;
   }
 }
 
 export async function getManufacturingOrders(): Promise<ManufacturingOrder[]> {
-  const { data: { session }, error: sessionError } = await supabase.auth.getSession();
-  
-  if (sessionError || !session) {
-    throw new Error('No se ha podido autenticar. Por favor, inicie sesión de nuevo.');
-  }
-
   const { data, error } = await supabase
     .from('manufacturing_orders')
     .select(`
@@ -201,14 +221,7 @@ export async function getManufacturingOrders(): Promise<ManufacturingOrder[]> {
 }
 
 export async function getAllStageTimes(): Promise<Record<string, { total: number, stages: Record<string, number>, users: Record<string, string> }>> {
-  const { data: { session }, error: sessionError } = await supabase.auth.getSession();
-  
-  if (sessionError || !session) {
-    throw new Error('No se ha podido autenticar. Por favor, inicie sesión de nuevo.');
-  }
-
-  // Query stage times with profile information
-  const { data: stageTimes, error: stageTimesError } = await supabase
+  const { data: stageTimes, error } = await supabase
     .from('stage_times')
     .select(`
       id,
@@ -222,14 +235,13 @@ export async function getAllStageTimes(): Promise<Record<string, { total: number
       )
     `);
 
-  if (stageTimesError) {
-    console.error('Error fetching stage times:', stageTimesError);
-    throw stageTimesError;
+  if (error) {
+    console.error('Error fetching stage times:', error);
+    throw error;
   }
 
   const result: Record<string, { total: number, stages: Record<string, number>, users: Record<string, string> }> = {};
 
-  // Process each time record
   stageTimes.forEach((time: any) => {
     if (!result[time.order_id]) {
       result[time.order_id] = {
@@ -241,15 +253,11 @@ export async function getAllStageTimes(): Promise<Record<string, { total: number
       };
     }
 
-    // Store the time for this stage
     result[time.order_id].stages[time.stage] = time.time_ms;
-    
-    // Store the user who registered the time
     const userName = time.profile?.name || time.profile?.email?.split('@')[0] || 'Usuario desconocido';
     result[time.order_id].users[time.stage] = userName;
   });
 
-  // Calculate totals after all stages are processed
   Object.keys(result).forEach(orderId => {
     result[orderId].total = Object.values(result[orderId].stages)
       .reduce((sum, time) => sum + (time || 0), 0);
@@ -258,37 +266,84 @@ export async function getAllStageTimes(): Promise<Record<string, { total: number
   return result;
 }
 
-export async function deleteAllManufacturingOrders(): Promise<void> {
-  const { data: { session }, error: sessionError } = await supabase.auth.getSession();
-  
-  if (sessionError || !session) {
-    throw new Error('No se ha podido autenticar. Por favor, inicie sesión de nuevo.');
+export async function deleteManufacturingOrder(orderId: string): Promise<void> {
+  const { error: stageTimesError } = await supabase
+    .from('stage_times')
+    .delete()
+    .eq('order_id', orderId);
+
+  if (stageTimesError) {
+    console.error('Error deleting stage times:', stageTimesError);
+    throw stageTimesError;
   }
 
-  // First, get all order IDs
+  const { error: orderError } = await supabase
+    .from('manufacturing_orders')
+    .delete()
+    .eq('id', orderId);
+
+  if (orderError) {
+    console.error('Error deleting order:', orderError);
+    throw orderError;
+  }
+}
+
+export async function deleteAllManufacturingOrders(): Promise<void> {
   const { data: orders, error: ordersError } = await supabase
     .from('manufacturing_orders')
     .select('id');
 
-  if (ordersError) throw ordersError;
+  if (ordersError) {
+    console.error('Error fetching orders for deletion:', ordersError);
+    throw ordersError;
+  }
 
   if (!orders || orders.length === 0) return;
 
   const orderIds = orders.map(order => order.id);
 
-  // Delete all stage times for these orders first (due to foreign key constraint)
   const { error: stageTimesError } = await supabase
     .from('stage_times')
     .delete()
     .in('order_id', orderIds);
 
-  if (stageTimesError) throw stageTimesError;
+  if (stageTimesError) {
+    console.error('Error deleting stage times:', stageTimesError);
+    throw stageTimesError;
+  }
 
-  // Then delete all manufacturing orders
   const { error: ordersDeleteError } = await supabase
     .from('manufacturing_orders')
     .delete()
-    .neq('id', '00000000-0000-0000-0000-000000000000');
+    .in('id', orderIds);
 
-  if (ordersDeleteError) throw ordersDeleteError;
+  if (ordersDeleteError) {
+    console.error('Error deleting orders:', ordersDeleteError);
+    throw ordersDeleteError;
+  }
+}
+
+export async function updateManufacturingNumber(
+  orderId: string,
+  newNumber: string
+): Promise<void> {
+  if (!newNumber?.trim()) {
+    throw new Error('El número de fabricación es requerido');
+  }
+
+  const { error } = await supabase
+    .from('manufacturing_orders')
+    .update({ 
+      manufacturing_number: newNumber.trim(),
+      updated_at: new Date().toISOString()
+    })
+    .eq('id', orderId);
+
+  if (error) {
+    console.error('Error updating manufacturing number:', error);
+    if (error.code === '23505') {
+      throw new Error('Este número de fabricación ya existe');
+    }
+    throw new Error('Error al actualizar el número de fabricación');
+  }
 }
