@@ -230,9 +230,13 @@ function App() {
 
   const handleStartWithoutNumber = async () => {
     try {
-      const order = await createManufacturingOrder('SIN-', ['assembly']);
+      const timestamp = new Date().getTime();
+      const randomSuffix = Math.random().toString(36).substring(2, 6);
+      const generatedNumber = `SIN-${timestamp}-${randomSuffix}`;
+      
+      const order = await createManufacturingOrder(generatedNumber, ['assembly']);
       setCurrentOrder(order);
-      setManufacturingNumber(order.manufacturing_number);
+      setManufacturingNumber(generatedNumber);
       setCurrentStage('assembly');
       setCurrentView('production');
       await loadOrders();
@@ -312,6 +316,7 @@ function App() {
     setManufacturingNumber(order.manufacturing_number);
     setCurrentStage(order.current_stage as Stage);
     setCurrentView('production');
+    setOrderType(order.manufacturing_number.startsWith('SIN-') ? 'without-number' : 'with-number');
 
     if (totalTimes[order.id]) {
       setStageTimes({
@@ -529,7 +534,11 @@ function App() {
                   <button
                     onClick={() => {
                       handleStopTimer();
-                      handleStageChange('summary');
+                      if (orderType === 'with-number') {
+                        setShowIncidentsDialog(true);
+                      } else {
+                        setShowTaskDescriptionDialog(true);
+                      }
                     }}
                     className="flex items-center gap-2 px-6 py-3 text-white bg-green-600 rounded-md hover:bg-green-700"
                   >
@@ -772,17 +781,9 @@ function App() {
         {currentView === 'production' && renderStageContent()}
 
         {showIncidentsDialog && (
-          
           <IncidentsDialog
             onConfirm={handleIncidentsConfirm}
             onClose={() => setShowIncidentsDialog(false)}
-          />
-        )}
-
-        {showTaskDescriptionDialog && (
-          <TaskDescriptionDialog
-            onConfirm={handleTaskDescriptionConfirm}
-            onClose={() => setShowTaskDescriptionDialog(false)}
           />
         )}
 
@@ -797,6 +798,13 @@ function App() {
               setEditError(null);
             }}
             error={editError}
+          />
+        )}
+
+        {showTaskDescriptionDialog && (
+          <TaskDescriptionDialog
+            onConfirm={handleTaskDescriptionConfirm}
+            onClose={() => setShowTaskDescriptionDialog(false)}
           />
         )}
       </div>

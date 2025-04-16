@@ -1,5 +1,5 @@
 import { supabase } from './supabase';
-import type { AuthResponse, Session } from '@supabase/supabase-js';
+import type { Session } from '@supabase/supabase-js';
 
 export type AuthError = {
   message: string;
@@ -39,10 +39,14 @@ export async function signIn(email: string, password: string): Promise<{ session
 }
 
 export async function signOut() {
-  const { error } = await supabase.auth.signOut();
-  if (error) {
-    console.error('Error al cerrar sesión:', error);
-    throw error;
+  try {
+    const { error } = await supabase.auth.signOut();
+    if (error) {
+      throw error;
+    }
+  } catch (error: any) {
+    console.error('Error signing out:', error);
+    throw new Error('Error al cerrar sesión');
   }
 }
 

@@ -10,5 +10,16 @@ export default defineConfig({
     hmr: {
       clientPort: 443
     }
+  },
+  build: {
+    sourcemap: true,
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          vendor: ['react', 'react-dom'],
+          supabase: ['@supabase/supabase-js']
+        }
+      }
+    }
   }
 });
