@@ -23,7 +23,7 @@ export async function signUp(email: string, password: string) {
   return data;
 }
 
-export async function signIn(email: string, password: string): Promise<AuthResponse> {
+export async function signIn(email: string, password: string): Promise<{ session: Session | null }> {
   const { data, error } = await supabase.auth.signInWithPassword({
     email,
     password,
@@ -35,7 +35,7 @@ export async function signIn(email: string, password: string): Promise<AuthRespo
     };
   }
 
-  return data;
+  return { session: data.session };
 }
 
 export async function signOut() {

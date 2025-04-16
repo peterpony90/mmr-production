@@ -30,10 +30,6 @@ export interface StageTime {
   };
 }
 
-// Prefijo para identificar órdenes de desarrollo
-const isDevelopment = import.meta.env.DEV;
-const DEV_PREFIX = 'DEV-';
-
 // Función para generar el número de tarea con contador
 async function generateTaskNumber(): Promise<string> {
   const date = new Date();
