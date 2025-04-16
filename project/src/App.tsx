@@ -303,14 +303,6 @@ function App() {
     }
   };
 
-  const handleStageChange = async (newStage: Stage) => {
-    if (currentOrder) {
-      await updateManufacturingOrderStage(currentOrder.id, newStage);
-      await loadOrders();
-    }
-    setCurrentStage(newStage);
-  };
-
   const handleSelectOrder = (order: ManufacturingOrder) => {
     setCurrentOrder(order);
     setManufacturingNumber(order.manufacturing_number);
