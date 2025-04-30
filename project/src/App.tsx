@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { ArrowRight, ArrowLeft, Mail, Lock, LogOut, Play, Square, Timer, CheckCircle, ChevronRight, ClipboardList, Home, Pause } from 'lucide-react';
+import { ArrowRight, ArrowLeft, Mail, Lock, LogOut, Play, Square, Timer, CheckCircle, ChevronRight, ClipboardList, Home, Pause, Wrench } from 'lucide-react';
 import { signIn, signUp, signOut, getSession } from './lib/auth';
 import { createManufacturingOrder, updateManufacturingOrderStage, saveStageTime, getManufacturingOrders, getAllStageTimes, deleteAllManufacturingOrders, updateManufacturingNumber } from './lib/database';
 import type { AuthError } from './lib/auth';
@@ -303,6 +303,14 @@ function App() {
     }
   };
 
+  const handleStageChange = async (newStage: Stage) => {
+    if (currentOrder) {
+      await updateManufacturingOrderStage(currentOrder.id, newStage);
+      await loadOrders();
+    }
+    setCurrentStage(newStage);
+  };
+
   const handleSelectOrder = (order: ManufacturingOrder) => {
     setCurrentOrder(order);
     setManufacturingNumber(order.manufacturing_number);
@@ -379,6 +387,42 @@ function App() {
           })}
         </ol>
       </nav>
+    );
+  };
+
+  const renderTimer = () => {
+    if (!isTimerRunning || currentStage === 'summary') return null;
+
+    return (
+      <div className="fixed bottom-4 right-4 bg-white rounded-lg shadow-lg p-4 z-50">
+        <div className="text-2xl font-mono mb-2">
+          <Timer className="inline-block w-6 h-6 mr-2 mb-1" />
+          {formatTime(elapsedTime)}
+        </div>
+        <div className="flex justify-center gap-2">
+          {!isPaused ? (
+            <button
+              onClick={handlePauseTimer}
+              className="px-3 py-1 text-sm text-white bg-yellow-600 rounded-md hover:bg-yellow-700"
+            >
+              <Pause className="w-4 h-4" />
+            </button>
+          ) : (
+            <button
+              onClick={handleResumeTimer}
+              className="px-3 py-1 text-sm text-white bg-green-600 rounded-md hover:bg-green-700"
+            >
+              <Play className="w-4 h-4" />
+            </button>
+          )}
+          <button
+            onClick={handleStopTimer}
+            className="px-3 py-1 text-sm text-white bg-red-600 rounded-md hover:bg-red-700"
+          >
+            <Square className="w-4 h-4" />
+          </button>
+        </div>
+      </div>
     );
   };
 
@@ -799,6 +843,8 @@ function App() {
             onClose={() => setShowTaskDescriptionDialog(false)}
           />
         )}
+
+        {renderTimer()}
       </div>
 
       <footer className="bg-black text-gray-300 py-12 mt-auto">

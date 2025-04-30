@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Download, ChevronLeft, ChevronRight, Timer, Trash2, ChevronDown, ChevronUp, Eye, User, Pencil} from 'lucide-react';
+import { Download, ChevronLeft, ChevronRight, Timer, Trash2, ChevronDown, ChevronUp, Eye, User, Pencil, AlertTriangle, FileText } from 'lucide-react';
 import type { ManufacturingOrder } from '../lib/database';
 import { utils, writeFile } from 'xlsx';
 import { deleteManufacturingOrder } from '../lib/database';
@@ -18,7 +18,7 @@ const stageNames: Record<string, string> = {
   summary: 'Finalizado'
 };
 
-const ITEMS_PER_PAGE = 10;
+const ITEMS_PER_PAGE = 50;
 
 const formatTime = (ms: number | null): string => {
   if (ms === null || ms === undefined) return '-';
@@ -40,6 +40,10 @@ const formatDate = (dateString: string): string => {
   }).format(date);
 };
 
+const isManufacturingOrder = (number: string): boolean => {
+  return !number.startsWith('Tarea_');
+};
+
 export function ManufacturingOrdersList({ orders, onSelectOrder, totalTimes, onDeleteAll, onOrdersChanged, onEditOrder }: Props) {
   const [currentPage, setCurrentPage] = useState(1);
   const [isDeleting, setIsDeleting] = useState(false);
@@ -47,11 +51,24 @@ export function ManufacturingOrdersList({ orders, onSelectOrder, totalTimes, onD
 
   const totalPages = Math.ceil(orders.length / ITEMS_PER_PAGE);
   const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
+  const endIndex = Math.min(startIndex + ITEMS_PER_PAGE, orders.length);
   const paginatedOrders = orders.slice(startIndex, startIndex + ITEMS_PER_PAGE);
 
   const handlePageChange = (page: number) => {
     setCurrentPage(page);
     setExpandedOrder(null);
+  };
+
+  const handleNextPage = () => {
+    if (currentPage < totalPages) {
+      handlePageChange(currentPage + 1);
+    }
+  };
+
+  const handlePrevPage = () => {
+    if (currentPage > 1) {
+      handlePageChange(currentPage - 1);
+    }
   };
 
   const handleDeleteAll = async () => {
@@ -86,6 +103,7 @@ export function ManufacturingOrdersList({ orders, onSelectOrder, totalTimes, onD
       const users = totalTimes[order.id]?.users || {};
       return {
         'Número de O. fabricación': order.manufacturing_number,
+        'Orden de fabricación': isManufacturingOrder(order.manufacturing_number) ? 'Sí' : 'No',
         'Fecha inicio': formatDate(order.created_at),
         'Fecha finalización': order.completed_at ? formatDate(order.completed_at) : '-',
         'Etapa actual': stageNames[order.current_stage],
@@ -103,6 +121,7 @@ export function ManufacturingOrdersList({ orders, onSelectOrder, totalTimes, onD
     
     const colWidths = [
       { wch: 25 }, // Número de O. fabricación
+      { wch: 10 }, // Orden de fabricación
       { wch: 20 }, // Fecha inicio
       { wch: 20 }, // Fecha finalización
       { wch: 15 }, // Etapa actual
@@ -156,6 +175,9 @@ export function ManufacturingOrdersList({ orders, onSelectOrder, totalTimes, onD
                 Nº O. Fabricación
               </th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                O. Fabricación
+              </th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                 Fecha Inicio
               </th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -193,6 +215,9 @@ export function ManufacturingOrdersList({ orders, onSelectOrder, totalTimes, onD
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
                     {order.manufacturing_number}
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                    {isManufacturingOrder(order.manufacturing_number) ? 'Sí' : 'No'}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                     {formatDate(order.created_at)}
@@ -249,7 +274,7 @@ export function ManufacturingOrdersList({ orders, onSelectOrder, totalTimes, onD
                 </tr>
                 {expandedOrder === order.id && (
                   <tr>
-                    <td colSpan={8} className="px-6 py-4 bg-gray-50">
+                    <td colSpan={9} className="px-6 py-4 bg-gray-50">
                       <div className="space-y-4">
                         <div className="grid grid-cols-1 gap-4">
                           <div className="bg-white p-4 rounded-lg shadow-sm border border-gray-200">
@@ -273,7 +298,9 @@ export function ManufacturingOrdersList({ orders, onSelectOrder, totalTimes, onD
                               </div>
                               {order.incident_description && (
                                 <div>
-                                  <h4 className="text-sm font-medium text-gray-700 mb-1">Descripción:</h4>
+                                  <h4 className="text-sm font-medium text-gray-700 mb-1">
+                                    {isManufacturingOrder(order.manufacturing_number) ? 'Incidencias:' : 'Descripción:'}
+                                  </h4>
                                   <p className="text-gray-600 whitespace-pre-wrap">
                                     {order.incident_description}
                                   </p>
@@ -302,36 +329,34 @@ export function ManufacturingOrdersList({ orders, onSelectOrder, totalTimes, onD
         <div className="px-6 py-4 bg-gray-50 border-t border-gray-200">
           <div className="flex items-center justify-between">
             <div className="text-sm text-gray-700">
-              Mostrando {startIndex + 1}-{Math.min(startIndex + ITEMS_PER_PAGE, orders.length)} de {orders.length}
+              Mostrando {startIndex + 1}-{endIndex} de {orders.length}
             </div>
             <div className="flex items-center gap-2">
               <button
-                onClick={() => handlePageChange(currentPage - 1)}
+                onClick={handlePrevPage}
                 disabled={currentPage === 1}
                 className="p-2 text-gray-600 hover:text-[#b41826] disabled:text-gray-400 disabled:cursor-not-allowed"
               >
                 <ChevronLeft className="w-5 h-5" />
               </button>
-              {Array.from({ length: totalPages }, (_, i) => i + 1).map(page => (
-                <button
-                  key={page}
-                  onClick={() => handlePageChange(page)}
-                  className={`px-3 py-1 rounded-md text-sm ${
-                    currentPage === page
-                      ? 'bg-[#b41826] text-white'
-                      : 'text-gray-600 hover:bg-gray-100'
-                  }`}
-                >
-                  {page}
-                </button>
-              ))}
+              <span className="text-sm text-gray-700">
+                {currentPage} de {totalPages}
+              </span>
               <button
-                onClick={() => handlePageChange(currentPage + 1)}
+                onClick={handleNextPage}
                 disabled={currentPage === totalPages}
                 className="p-2 text-gray-600 hover:text-[#b41826] disabled:text-gray-400 disabled:cursor-not-allowed"
               >
                 <ChevronRight className="w-5 h-5" />
               </button>
+              {currentPage < totalPages && (
+                <button
+                  onClick={() => handlePageChange(currentPage + 1)}
+                  className="ml-2 px-3 py-1 text-sm text-gray-600 hover:text-[#b41826]"
+                >
+                  +{ITEMS_PER_PAGE}
+                </button>
+              )}
             </div>
           </div>
         </div>

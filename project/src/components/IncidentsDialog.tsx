@@ -1,6 +1,17 @@
 import { useState } from 'react';
 import { X } from 'lucide-react';
 
+const incidentOptions = [
+  'Alojamiento tapas ebike',
+  'Asiento pinza de freno',
+  'Asiento rodamiento de dirección',
+  'Holgura basculante',
+  'Incidencias portabidón',
+  'Pintura',
+  'Tolerancias namepivot',
+  'Otros'
+];
+
 interface IncidentsDialogProps {
   onConfirm: (hasIncidents: boolean, description?: string) => void;
   onClose: () => void;
@@ -8,7 +19,7 @@ interface IncidentsDialogProps {
 
 export function IncidentsDialog({ onConfirm, onClose }: IncidentsDialogProps) {
   const [showDescription, setShowDescription] = useState(false);
-  const [description, setDescription] = useState('');
+  const [selectedIncidents, setSelectedIncidents] = useState<string[]>([]);
 
   const handleConfirm = (hasIncidents: boolean) => {
     if (!hasIncidents) {
@@ -19,7 +30,15 @@ export function IncidentsDialog({ onConfirm, onClose }: IncidentsDialogProps) {
   };
 
   const handleSubmitDescription = () => {
-    onConfirm(true, description);
+    onConfirm(true, selectedIncidents.join(', '));
+  };
+
+  const toggleIncident = (incident: string) => {
+    setSelectedIncidents(prev => 
+      prev.includes(incident)
+        ? prev.filter(i => i !== incident)
+        : [...prev, incident]
+    );
   };
 
   if (showDescription) {
@@ -28,7 +47,7 @@ export function IncidentsDialog({ onConfirm, onClose }: IncidentsDialogProps) {
         <div className="bg-white rounded-lg shadow-xl max-w-md w-full mx-4">
           <div className="flex justify-between items-center p-6 border-b border-gray-200">
             <h3 className="text-lg font-semibold text-gray-900">
-              Describir incidencia
+              Seleccionar incidencias
             </h3>
             <button
               onClick={onClose}
@@ -40,18 +59,18 @@ export function IncidentsDialog({ onConfirm, onClose }: IncidentsDialogProps) {
 
           <div className="p-6">
             <div className="space-y-4">
-              <div>
-                <label htmlFor="description" className="block text-sm font-medium text-gray-700">
-                  Descripción de la incidencia
-                </label>
-                <textarea
-                  id="description"
-                  rows={4}
-                  value={description}
-                  onChange={(e) => setDescription(e.target.value)}
-                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-[#b41826] focus:ring-[#b41826] sm:text-sm"
-                  required
-                />
+              <div className="space-y-2">
+                {incidentOptions.map(incident => (
+                  <label key={incident} className="flex items-center space-x-3">
+                    <input
+                      type="checkbox"
+                      checked={selectedIncidents.includes(incident)}
+                      onChange={() => toggleIncident(incident)}
+                      className="rounded border-gray-300 text-[#b41826] focus:ring-[#b41826]"
+                    />
+                    <span className="text-gray-700">{incident}</span>
+                  </label>
+                ))}
               </div>
 
               <div className="flex justify-end gap-4 mt-6">
@@ -64,7 +83,7 @@ export function IncidentsDialog({ onConfirm, onClose }: IncidentsDialogProps) {
                 </button>
                 <button
                   onClick={handleSubmitDescription}
-                  disabled={!description.trim()}
+                  disabled={selectedIncidents.length === 0}
                   className="px-4 py-2 text-sm font-medium text-white bg-[#b41826] rounded-md hover:bg-[#a01522] disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   Guardar
