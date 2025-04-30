@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { ArrowRight, ArrowLeft, Mail, Lock, LogOut, Play, Square, Timer, CheckCircle, ChevronRight, ClipboardList, Home, Pause, Wrench } from 'lucide-react';
+import { ArrowRight, ArrowLeft, Mail, Lock, LogOut, Play, Square, Timer, CheckCircle, ChevronRight, ClipboardList, Home, Pause} from 'lucide-react';
 import { signIn, signUp, signOut, getSession } from './lib/auth';
 import { createManufacturingOrder, updateManufacturingOrderStage, saveStageTime, getManufacturingOrders, getAllStageTimes, deleteAllManufacturingOrders, updateManufacturingNumber } from './lib/database';
 import type { AuthError } from './lib/auth';
@@ -303,13 +303,13 @@ function App() {
     }
   };
 
-  const handleStageChange = async (newStage: Stage) => {
-    if (currentOrder) {
-      await updateManufacturingOrderStage(currentOrder.id, newStage);
-      await loadOrders();
-    }
-    setCurrentStage(newStage);
-  };
+//  const handleStageChange = async (newStage: Stage) => {
+  //  if (currentOrder) {
+    //  await updateManufacturingOrderStage(currentOrder.id, newStage);
+      //await loadOrders();
+    //}
+    //setCurrentStage(newStage);
+  //};
 
   const handleSelectOrder = (order: ManufacturingOrder) => {
     setCurrentOrder(order);
