@@ -1,5 +1,5 @@
 import { supabase } from './supabase';
-import type { AuthResponse, Session } from '@supabase/supabase-js';
+import type { Session } from '@supabase/supabase-js';
 
 export type AuthError = {
   message: string;
@@ -23,7 +23,7 @@ export async function signUp(email: string, password: string) {
   return data;
 }
 
-export async function signIn(email: string, password: string): Promise<AuthResponse> {
+export async function signIn(email: string, password: string): Promise<{ session: Session | null }> {
   const { data, error } = await supabase.auth.signInWithPassword({
     email,
     password,
@@ -35,30 +35,18 @@ export async function signIn(email: string, password: string): Promise<AuthRespo
     };
   }
 
-  return data;
+  return { session: data.session };
 }
 
 export async function signOut() {
   try {
-    // First check if we have a valid session
-    const { data: { session } } = await supabase.auth.getSession();
-    
-    if (!session) {
-      // If no session exists, clear any local state but don't throw an error
-      await supabase.auth.clearSession();
-      return;
-    }
-
     const { error } = await supabase.auth.signOut();
     if (error) {
-      throw {
-        message: error.message || 'Error al cerrar sesión',
-      };
+      throw error;
     }
   } catch (error: any) {
-    // If there's any error during the process, clear the session
-    await supabase.auth.clearSession();
-    throw error;
+    console.error('Error signing out:', error);
+    throw new Error('Error al cerrar sesión');
   }
 }
 

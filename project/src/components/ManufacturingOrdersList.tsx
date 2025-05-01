@@ -1,13 +1,16 @@
 import React, { useState } from 'react';
-import { Download, ChevronLeft, ChevronRight, Timer, Trash2, ChevronDown, ChevronUp, Eye, User } from 'lucide-react';
+import { Download, ChevronLeft, ChevronRight, Timer, Trash2, ChevronDown, ChevronUp, Eye, User, Pencil} from 'lucide-react';
 import type { ManufacturingOrder } from '../lib/database';
 import { utils, writeFile } from 'xlsx';
+import { deleteManufacturingOrder } from '../lib/database';
 
 interface Props {
   orders: ManufacturingOrder[];
   onSelectOrder: (order: ManufacturingOrder) => void;
   totalTimes: Record<string, { total: number, stages: Record<string, number>, users: Record<string, string> }>;
   onDeleteAll: () => Promise<void>;
+  onOrdersChanged: () => Promise<void>;
+  onEditOrder: (order: ManufacturingOrder) => void;
 }
 
 const stageNames: Record<string, string> = {
@@ -15,7 +18,7 @@ const stageNames: Record<string, string> = {
   summary: 'Finalizado'
 };
 
-const ITEMS_PER_PAGE = 10;
+const ITEMS_PER_PAGE = 50;
 
 const formatTime = (ms: number | null): string => {
   if (ms === null || ms === undefined) return '-';
@@ -37,18 +40,35 @@ const formatDate = (dateString: string): string => {
   }).format(date);
 };
 
-export function ManufacturingOrdersList({ orders, onSelectOrder, totalTimes, onDeleteAll }: Props) {
+const isManufacturingOrder = (number: string): boolean => {
+  return !number.startsWith('Tarea_');
+};
+
+export function ManufacturingOrdersList({ orders, onSelectOrder, totalTimes, onDeleteAll, onOrdersChanged, onEditOrder }: Props) {
   const [currentPage, setCurrentPage] = useState(1);
   const [isDeleting, setIsDeleting] = useState(false);
   const [expandedOrder, setExpandedOrder] = useState<string | null>(null);
 
   const totalPages = Math.ceil(orders.length / ITEMS_PER_PAGE);
   const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
+  const endIndex = Math.min(startIndex + ITEMS_PER_PAGE, orders.length);
   const paginatedOrders = orders.slice(startIndex, startIndex + ITEMS_PER_PAGE);
 
   const handlePageChange = (page: number) => {
     setCurrentPage(page);
     setExpandedOrder(null);
+  };
+
+  const handleNextPage = () => {
+    if (currentPage < totalPages) {
+      handlePageChange(currentPage + 1);
+    }
+  };
+
+  const handlePrevPage = () => {
+    if (currentPage > 1) {
+      handlePageChange(currentPage - 1);
+    }
   };
 
   const handleDeleteAll = async () => {
@@ -65,18 +85,33 @@ export function ManufacturingOrdersList({ orders, onSelectOrder, totalTimes, onD
     }
   };
 
+  const handleDeleteOrder = async (orderId: string) => {
+    if (window.confirm('¿Estás seguro de que deseas eliminar esta orden de fabricación? Esta acción no se puede deshacer.')) {
+      try {
+        await deleteManufacturingOrder(orderId);
+        await onOrdersChanged();
+      } catch (error) {
+        console.error('Error deleting order:', error);
+        alert('Error al eliminar la orden. Por favor, inténtalo de nuevo.');
+      }
+    }
+  };
+
   const handleExportToExcel = () => {
     const data = orders.map(order => {
       const times = totalTimes[order.id]?.stages || {};
       const users = totalTimes[order.id]?.users || {};
       return {
         'Número de O. fabricación': order.manufacturing_number,
+        'Orden de fabricación': isManufacturingOrder(order.manufacturing_number) ? 'Sí' : 'No',
         'Fecha inicio': formatDate(order.created_at),
+        'Fecha finalización': order.completed_at ? formatDate(order.completed_at) : '-',
         'Etapa actual': stageNames[order.current_stage],
         'Tiempo Total': formatTime(totalTimes[order.id]?.total || null),
         'Tiempo Montaje': formatTime(times.assembly || null),
         'Usuario': users.assembly || '-',
-        'Creado por': order.profile?.name || order.profile?.email?.split('@')[0] || 'Usuario desconocido'
+        'Creado por': order.profile?.name || order.profile?.email?.split('@')[0] || 'Usuario desconocido',
+        'Descripción': order.incident_description || '-'
       };
     });
 
@@ -86,44 +121,23 @@ export function ManufacturingOrdersList({ orders, onSelectOrder, totalTimes, onD
     
     const colWidths = [
       { wch: 25 }, // Número de O. fabricación
+      { wch: 10 }, // Orden de fabricación
       { wch: 20 }, // Fecha inicio
+      { wch: 20 }, // Fecha finalización
       { wch: 15 }, // Etapa actual
       { wch: 15 }, // Tiempo Total
       { wch: 15 }, // Tiempo Montaje
       { wch: 20 }, // Usuario
-      { wch: 20 }  // Creado por
+      { wch: 20 }, // Creado por
+      { wch: 40 }  // Descripción
     ];
     ws['!cols'] = colWidths;
 
     writeFile(wb, 'ordenes_fabricacion.xlsx');
   };
 
-  const handleExpandOrder = (orderId: string) => {
+  const handleToggleDetails = (orderId: string) => {
     setExpandedOrder(expandedOrder === orderId ? null : orderId);
-  };
-
-  const getStageStatus = (order: ManufacturingOrder, stage: string) => {
-    if (!order.stages.includes(stage)) {
-      return 'not-included';
-    }
-
-    const stages = order.stages;
-    const currentIndex = stages.indexOf(order.current_stage);
-    const stageIndex = stages.indexOf(stage);
-
-    if (order.current_stage === 'summary') {
-      return 'completed';
-    }
-
-    if (stageIndex < currentIndex) {
-      return 'completed';
-    }
-
-    if (stageIndex === currentIndex) {
-      return 'current';
-    }
-
-    return 'pending';
   };
 
   return (
@@ -161,7 +175,13 @@ export function ManufacturingOrdersList({ orders, onSelectOrder, totalTimes, onD
                 Nº O. Fabricación
               </th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                O. Fabricación
+              </th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                 Fecha Inicio
+              </th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                Fecha Finalización
               </th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                 Tiempo Total
@@ -183,7 +203,7 @@ export function ManufacturingOrdersList({ orders, onSelectOrder, totalTimes, onD
                 <tr className="hover:bg-gray-50 transition-colors">
                   <td className="px-6 py-4">
                     <button
-                      onClick={() => handleExpandOrder(order.id)}
+                      onClick={() => handleToggleDetails(order.id)}
                       className="text-gray-500 hover:text-gray-700"
                     >
                       {expandedOrder === order.id ? (
@@ -197,7 +217,13 @@ export function ManufacturingOrdersList({ orders, onSelectOrder, totalTimes, onD
                     {order.manufacturing_number}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                    {isManufacturingOrder(order.manufacturing_number) ? 'Sí' : 'No'}
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                     {formatDate(order.created_at)}
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                    {order.completed_at ? formatDate(order.completed_at) : '-'}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                     <div className="flex items-center gap-2">
@@ -221,46 +247,67 @@ export function ManufacturingOrdersList({ orders, onSelectOrder, totalTimes, onD
                     </div>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                    <button
-                      onClick={() => onSelectOrder(order)}
-                      className="flex items-center gap-2 text-[#b41826] hover:text-[#a01522] font-medium"
-                    >
-                      <Eye className="w-4 h-4" />
-                      Ver orden
-                    </button>
+                    <div className="flex items-center gap-3">
+                      <button
+                        onClick={() => onSelectOrder(order)}
+                        className="flex items-center gap-1 text-[#b41826] hover:text-[#a01522] font-medium"
+                      >
+                        <Eye className="w-4 h-4" />
+                        Ver
+                      </button>
+                      <button
+                        onClick={() => onEditOrder(order)}
+                        className="flex items-center gap-1 text-blue-600 hover:text-blue-700 font-medium"
+                      >
+                        <Pencil className="w-4 h-4" />
+                        Editar
+                      </button>
+                      <button
+                        onClick={() => handleDeleteOrder(order.id)}
+                        className="flex items-center gap-1 text-red-600 hover:text-red-700 font-medium"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                        Eliminar
+                      </button>
+                    </div>
                   </td>
                 </tr>
                 {expandedOrder === order.id && (
                   <tr>
-                    <td colSpan={7} className="px-6 py-4 bg-gray-50">
+                    <td colSpan={9} className="px-6 py-4 bg-gray-50">
                       <div className="space-y-4">
-                        <h4 className="font-medium text-gray-900">Tiempo de montaje:</h4>
                         <div className="grid grid-cols-1 gap-4">
-                          {order.stages.includes('assembly') && (
-                            <div
-                              className={`bg-white p-4 rounded-lg shadow-sm border ${
-                                getStageStatus(order, 'assembly') === 'completed'
-                                  ? 'border-green-200 bg-green-50'
-                                  : getStageStatus(order, 'assembly') === 'current'
-                                  ? 'border-blue-200 bg-blue-50'
-                                  : 'border-gray-200'
-                              }`}
-                            >
-                              <div className="font-medium text-gray-900 mb-2">
-                                {stageNames['assembly']}
-                              </div>
-                              <div className="flex items-center justify-between">
+                          <div className="bg-white p-4 rounded-lg shadow-sm border border-gray-200">
+                            <div className="font-medium text-gray-900 mb-2">
+                              Detalles de la tarea
+                            </div>
+                            <div className="space-y-4">
+                              <div>
+                                <h4 className="text-sm font-medium text-gray-700 mb-1">Tiempo de montaje:</h4>
                                 <div className="flex items-center gap-2 text-gray-700">
                                   <Timer className="w-4 h-4" />
                                   {formatTime(totalTimes[order.id]?.stages.assembly || null)}
                                 </div>
+                              </div>
+                              <div>
+                                <h4 className="text-sm font-medium text-gray-700 mb-1">Operario:</h4>
                                 <div className="flex items-center gap-2 text-gray-700">
                                   <User className="w-4 h-4" />
                                   {totalTimes[order.id]?.users.assembly || '-'}
                                 </div>
                               </div>
+                              {order.incident_description && (
+                                <div>
+                                  <h4 className="text-sm font-medium text-gray-700 mb-1">
+                                    {isManufacturingOrder(order.manufacturing_number) ? 'Incidencias:' : 'Descripción:'}
+                                  </h4>
+                                  <p className="text-gray-600 whitespace-pre-wrap">
+                                    {order.incident_description}
+                                  </p>
+                                </div>
+                              )}
                             </div>
-                          )}
+                          </div>
                         </div>
                       </div>
                     </td>
@@ -282,36 +329,34 @@ export function ManufacturingOrdersList({ orders, onSelectOrder, totalTimes, onD
         <div className="px-6 py-4 bg-gray-50 border-t border-gray-200">
           <div className="flex items-center justify-between">
             <div className="text-sm text-gray-700">
-              Mostrando {startIndex + 1}-{Math.min(startIndex + ITEMS_PER_PAGE, orders.length)} de {orders.length}
+              Mostrando {startIndex + 1}-{endIndex} de {orders.length}
             </div>
             <div className="flex items-center gap-2">
               <button
-                onClick={() => handlePageChange(currentPage - 1)}
+                onClick={handlePrevPage}
                 disabled={currentPage === 1}
                 className="p-2 text-gray-600 hover:text-[#b41826] disabled:text-gray-400 disabled:cursor-not-allowed"
               >
                 <ChevronLeft className="w-5 h-5" />
               </button>
-              {Array.from({ length: totalPages }, (_, i) => i + 1).map(page => (
-                <button
-                  key={page}
-                  onClick={() => handlePageChange(page)}
-                  className={`px-3 py-1 rounded-md text-sm ${
-                    currentPage === page
-                      ? 'bg-[#b41826] text-white'
-                      : 'text-gray-600 hover:bg-gray-100'
-                  }`}
-                >
-                  {page}
-                </button>
-              ))}
+              <span className="text-sm text-gray-700">
+                {currentPage} de {totalPages}
+              </span>
               <button
-                onClick={() => handlePageChange(currentPage + 1)}
+                onClick={handleNextPage}
                 disabled={currentPage === totalPages}
                 className="p-2 text-gray-600 hover:text-[#b41826] disabled:text-gray-400 disabled:cursor-not-allowed"
               >
                 <ChevronRight className="w-5 h-5" />
               </button>
+              {currentPage < totalPages && (
+                <button
+                  onClick={() => handlePageChange(currentPage + 1)}
+                  className="ml-2 px-3 py-1 text-sm text-gray-600 hover:text-[#b41826]"
+                >
+                  +{ITEMS_PER_PAGE}
+                </button>
+              )}
             </div>
           </div>
         </div>
