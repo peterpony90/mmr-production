@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { ArrowRight, ArrowLeft, Mail, Lock, LogOut, Play, Square, Timer, CheckCircle, ChevronRight, ClipboardList, Home, Pause} from 'lucide-react';
+import { ArrowRight, ArrowLeft, Mail, Lock, LogOut, Play, Square, Timer, CheckCircle, ChevronRight, ClipboardList, Home, Pause, Wrench } from 'lucide-react';
 import { signIn, signUp, signOut, getSession } from './lib/auth';
 import { createManufacturingOrder, updateManufacturingOrderStage, saveStageTime, getManufacturingOrders, getAllStageTimes, deleteAllManufacturingOrders, updateManufacturingNumber } from './lib/database';
 import type { AuthError } from './lib/auth';
@@ -24,6 +24,17 @@ interface StageInfo {
   title: string;
   nextStage?: Stage;
   nextButtonText?: string;
+}
+
+interface TaskState {
+  orderId: string;
+  isTimerRunning: boolean;
+  isPaused: boolean;
+  startTime: number | null;
+  pausedTime: number;
+  elapsedTime: number;
+  stageTimes: StageTime;
+  completedStages: Set<Stage>;
 }
 
 const stageConfig: Record<Stage, StageInfo> = {
@@ -67,6 +78,7 @@ function App() {
   const [editError, setEditError] = useState<string | null>(null);
   const [orderType, setOrderType] = useState<OrderType>(null);
   const [showTaskDescriptionDialog, setShowTaskDescriptionDialog] = useState(false);
+  const [taskStates, setTaskStates] = useState<Record<string, TaskState>>({});
 
   useEffect(() => {
     getSession().then(setSession).catch(console.error);
@@ -80,17 +92,30 @@ function App() {
 
   useEffect(() => {
     let intervalId: number;
-    if (isTimerRunning && startTime !== null && !isPaused) {
+    
+    // Only update the timer if we have a current order and its timer is running
+    if (currentOrder && taskStates[currentOrder.id]?.isTimerRunning && !taskStates[currentOrder.id]?.isPaused) {
       intervalId = window.setInterval(() => {
-        setElapsedTime(Date.now() - startTime + pausedTime);
+        const state = taskStates[currentOrder.id];
+        if (state && state.startTime !== null) {
+          const newElapsedTime = Date.now() - state.startTime + state.pausedTime;
+          setTaskStates(prev => ({
+            ...prev,
+            [currentOrder.id]: {
+              ...prev[currentOrder.id],
+              elapsedTime: newElapsedTime
+            }
+          }));
+        }
       }, 10);
     }
+
     return () => {
       if (intervalId) {
         clearInterval(intervalId);
       }
     };
-  }, [isTimerRunning, startTime, isPaused, pausedTime]);
+  }, [currentOrder, taskStates]);
 
   useEffect(() => {
     if (currentView === 'new-order' && manufacturingNumberRef.current) {
@@ -140,15 +165,7 @@ function App() {
       setCurrentView('menu');
       setCurrentOrder(null);
       setCurrentStage('assembly');
-      setIsTimerRunning(false);
-      setIsPaused(false);
-      setElapsedTime(0);
-      setPausedTime(0);
-      setStartTime(null);
-      setStageTimes({
-        assembly: 0
-      });
-      setCompletedStages(new Set());
+      setTaskStates({});
     } catch (err: any) {
       console.error('Error al cerrar sesión:', err);
       setSession(null);
@@ -156,22 +173,32 @@ function App() {
     }
   };
 
+  const initializeNewTaskState = (orderId: string): TaskState => ({
+    orderId,
+    isTimerRunning: false,
+    isPaused: false,
+    startTime: null,
+    pausedTime: 0,
+    elapsedTime: 0,
+    stageTimes: { assembly: 0 },
+    completedStages: new Set()
+  });
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setFormError(null);
     try {
-      setElapsedTime(0);
-      setPausedTime(0);
-      setStartTime(null);
-      setIsTimerRunning(false);
-      setIsPaused(false);
-      setStageTimes({ assembly: 0 });
-      setCompletedStages(new Set());
-      
       const order = await createManufacturingOrder(manufacturingNumber, ['assembly']);
       setCurrentOrder(order);
       setCurrentStage('assembly');
       setCurrentView('production');
+      
+      // Initialize new task state
+      setTaskStates(prev => ({
+        ...prev,
+        [order.id]: initializeNewTaskState(order.id)
+      }));
+      
       await loadOrders();
     } catch (err: any) {
       if (err.message?.includes('duplicate key value')) {
@@ -191,26 +218,53 @@ function App() {
   };
 
   const handleStartTimer = () => {
-    if (!completedStages.has(currentStage)) {
-      setIsTimerRunning(true);
-      setIsPaused(false);
-      setStartTime(Date.now());
-      setElapsedTime(pausedTime);
-    }
+    if (!currentOrder) return;
+    
+    const state = taskStates[currentOrder.id];
+    if (!state || state.completedStages.has(currentStage)) return;
+
+    setTaskStates(prev => ({
+      ...prev,
+      [currentOrder.id]: {
+        ...prev[currentOrder.id],
+        isTimerRunning: true,
+        isPaused: false,
+        startTime: Date.now(),
+        elapsedTime: prev[currentOrder.id].pausedTime
+      }
+    }));
   };
 
   const handlePauseTimer = () => {
-    if (isTimerRunning && !isPaused) {
-      setIsPaused(true);
-      setPausedTime(elapsedTime);
-    }
+    if (!currentOrder) return;
+    
+    const state = taskStates[currentOrder.id];
+    if (!state || !state.isTimerRunning || state.isPaused) return;
+
+    setTaskStates(prev => ({
+      ...prev,
+      [currentOrder.id]: {
+        ...prev[currentOrder.id],
+        isPaused: true,
+        pausedTime: prev[currentOrder.id].elapsedTime
+      }
+    }));
   };
 
   const handleResumeTimer = () => {
-    if (isTimerRunning && isPaused) {
-      setIsPaused(false);
-      setStartTime(Date.now());
-    }
+    if (!currentOrder) return;
+    
+    const state = taskStates[currentOrder.id];
+    if (!state || !state.isTimerRunning || !state.isPaused) return;
+
+    setTaskStates(prev => ({
+      ...prev,
+      [currentOrder.id]: {
+        ...prev[currentOrder.id],
+        isPaused: false,
+        startTime: Date.now()
+      }
+    }));
   };
 
   const handleNewOrder = () => {
@@ -239,25 +293,50 @@ function App() {
       setManufacturingNumber(generatedNumber);
       setCurrentStage('assembly');
       setCurrentView('production');
+      
+      // Initialize new task state
+      setTaskStates(prev => ({
+        ...prev,
+        [order.id]: initializeNewTaskState(order.id)
+      }));
+      
       await loadOrders();
     } catch (err) {
       console.error('Error creating order without number:', err);
       setFormError('Error al crear la tarea. Por favor, inténtelo de nuevo.');
-
-
     }
   };
 
   const handleStopTimer = async () => {
-    setIsTimerRunning(false);
-    setIsPaused(false);
-    if (currentStage !== 'summary' && currentOrder && !completedStages.has(currentStage)) {
-      const time = elapsedTime;
-      setStageTimes(prev => ({
+    if (!currentOrder) return;
+    
+    const state = taskStates[currentOrder.id];
+    if (!state) return;
+
+    setTaskStates(prev => ({
+      ...prev,
+      [currentOrder.id]: {
+        ...prev[currentOrder.id],
+        isTimerRunning: false,
+        isPaused: false
+      }
+    }));
+
+    if (currentStage !== 'summary' && !state.completedStages.has(currentStage)) {
+      const time = state.elapsedTime;
+      
+      setTaskStates(prev => ({
         ...prev,
-        [currentStage]: time
+        [currentOrder.id]: {
+          ...prev[currentOrder.id],
+          stageTimes: {
+            ...prev[currentOrder.id].stageTimes,
+            [currentStage]: time
+          },
+          completedStages: new Set([...prev[currentOrder.id].completedStages, currentStage])
+        }
       }));
-      setCompletedStages(prev => new Set([...prev, currentStage]));
+
       await saveStageTime(currentOrder.id, currentStage, time);
       await loadOrders();
       
@@ -305,13 +384,13 @@ function App() {
     }
   };
 
-//  const handleStageChange = async (newStage: Stage) => {
-  //  if (currentOrder) {
-    //  await updateManufacturingOrderStage(currentOrder.id, newStage);
-      //await loadOrders();
-    //}
-    //setCurrentStage(newStage);
-  //};
+  const handleStageChange = async (newStage: Stage) => {
+    if (currentOrder) {
+      await updateManufacturingOrderStage(currentOrder.id, newStage);
+      await loadOrders();
+    }
+    setCurrentStage(newStage);
+  };
 
   const handleSelectOrder = (order: ManufacturingOrder) => {
     setCurrentOrder(order);
@@ -320,16 +399,12 @@ function App() {
     setCurrentView('production');
     setOrderType(order.manufacturing_number.startsWith('SIN-') ? 'without-number' : 'with-number');
 
-    if (totalTimes[order.id]) {
-      setStageTimes({
-        assembly: totalTimes[order.id].stages.assembly || 0
-      });
-
-      const completed = new Set<Stage>();
-      if (totalTimes[order.id].stages.assembly > 0) {
-        completed.add('assembly');
-      }
-      setCompletedStages(completed);
+    // Initialize task state if it doesn't exist
+    if (!taskStates[order.id]) {
+      setTaskStates(prev => ({
+        ...prev,
+        [order.id]: initializeNewTaskState(order.id)
+      }));
     }
   };
 
@@ -340,6 +415,7 @@ function App() {
   const handleDeleteAll = async () => {
     try {
       await deleteAllManufacturingOrders();
+      setTaskStates({});
       await loadOrders();
     } catch (err) {
       console.error('Error deleting orders:', err);
@@ -352,7 +428,8 @@ function App() {
   };
 
   const getTotalTime = (): number => {
-    return stageTimes.assembly;
+    if (!currentOrder || !taskStates[currentOrder.id]) return 0;
+    return taskStates[currentOrder.id].stageTimes.assembly;
   };
 
   const renderBreadcrumbs = () => {
@@ -393,16 +470,18 @@ function App() {
   };
 
   const renderTimer = () => {
-    if (!isTimerRunning || currentStage === 'summary') return null;
+    if (!currentOrder || !taskStates[currentOrder.id]?.isTimerRunning || currentStage === 'summary') return null;
+
+    const state = taskStates[currentOrder.id];
 
     return (
       <div className="fixed bottom-4 right-4 bg-white rounded-lg shadow-lg p-4 z-50">
         <div className="text-2xl font-mono mb-2">
           <Timer className="inline-block w-6 h-6 mr-2 mb-1" />
-          {formatTime(elapsedTime)}
+          {formatTime(state.elapsedTime)}
         </div>
         <div className="flex justify-center gap-2">
-          {!isPaused ? (
+          {!state.isPaused ? (
             <button
               onClick={handlePauseTimer}
               className="px-3 py-1 text-sm text-white bg-yellow-600 rounded-md hover:bg-yellow-700"
@@ -429,6 +508,12 @@ function App() {
   };
 
   const renderSummaryScreen = () => {
+    if (!currentOrder || !taskStates[currentOrder.id]) {
+      return null;
+    }
+
+    const state = taskStates[currentOrder.id];
+
     return (
       <div className="max-w-3xl mx-auto">
         <div className="bg-white rounded-lg shadow-lg p-8">
@@ -454,7 +539,7 @@ function App() {
               </h3>
               <div className="flex justify-between items-center">
                 <span className="text-gray-600">Montaje:</span>
-                <span className="font-mono">{formatTime(stageTimes.assembly)}</span>
+                <span className="font-mono">{formatTime(state.stageTimes.assembly)}</span>
               </div>
             </div>
 
@@ -470,15 +555,6 @@ function App() {
                 onClick={() => {
                   setCurrentOrder(null);
                   setCurrentStage('assembly');
-                  setIsTimerRunning(false);
-                  setIsPaused(false);
-                  setStageTimes({
-                    assembly: 0
-                  });
-                  setCompletedStages(new Set());
-                  setElapsedTime(0);
-                  setPausedTime(0);
-                  setStartTime(null);
                   setManufacturingNumber('');
                   setOrderType(null);
                   setCurrentView('new-order-type');
@@ -500,11 +576,13 @@ function App() {
       return renderSummaryScreen();
     }
 
+    if (!currentOrder || !taskStates[currentOrder.id]) return null;
+
     const currentStageConfig = stageConfig[currentStage];
-    
     if (!currentStageConfig) return null;
 
-    const isStageCompleted = completedStages.has(currentStage);
+    const state = taskStates[currentOrder.id];
+    const isStageCompleted = state.completedStages.has(currentStage);
 
     return (
       <div className="max-w-3xl mx-auto">
@@ -514,11 +592,11 @@ function App() {
           <div className="mb-8">
             <div className="text-4xl font-mono text-center mb-6">
               <Timer className="inline-block w-8 h-8 mr-2 mb-1" />
-              {formatTime(isStageCompleted ? stageTimes[currentStage] : elapsedTime)}
+              {formatTime(isStageCompleted ? state.stageTimes[currentStage] : state.elapsedTime)}
             </div>
             
             <div className="flex justify-center gap-4 mb-8">
-              {!isStageCompleted && !isTimerRunning && (
+              {!isStageCompleted && !state.isTimerRunning && (
                 <button
                   onClick={handleStartTimer}
                   className="flex items-center gap-2 px-6 py-3 text-white bg-green-600 rounded-md hover:bg-green-700"
@@ -528,9 +606,9 @@ function App() {
                 </button>
               )}
               
-              {!isStageCompleted && isTimerRunning && (
+              {!isStageCompleted && state.isTimerRunning && (
                 <>
-                  {!isPaused ? (
+                  {!state.isPaused ? (
                     <button
                       onClick={handlePauseTimer}
                       className="flex items-center gap-2 px-6 py-3 text-white bg-yellow-600 rounded-md hover:bg-yellow-700"
@@ -665,7 +743,6 @@ function App() {
                 </div>
               </div>
 
-
               {error && (
                 <div className="text-red-600 text-sm text-center">{error}</div>
               )}
@@ -690,7 +767,6 @@ function App() {
                   type="button"
                   onClick={() => setIsSignUp(!isSignUp)}
                   className="w-full text-sm text-[#b41826] hover:text-[#a01522]"
-
                 >
                   {isSignUp
                     ? '¿Ya tienes una cuenta? Inicia sesión'

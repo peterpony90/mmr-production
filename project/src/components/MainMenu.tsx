@@ -1,4 +1,4 @@
-//import React from 'react';
+import React from 'react';
 import { PlusCircle, ClipboardList } from 'lucide-react';
 
 interface MainMenuProps {
