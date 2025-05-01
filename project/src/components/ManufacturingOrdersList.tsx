@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Download, ChevronLeft, ChevronRight, Timer, Trash2, ChevronDown, ChevronUp, Eye, User, Pencil, AlertTriangle, FileText } from 'lucide-react';
+import { Download, ChevronLeft, ChevronRight, Timer, Trash2, ChevronDown, ChevronUp, Eye, User, Pencil} from 'lucide-react';
 import type { ManufacturingOrder } from '../lib/database';
 import { utils, writeFile } from 'xlsx';
 import { deleteManufacturingOrder } from '../lib/database';
