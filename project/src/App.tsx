@@ -243,6 +243,8 @@ function App() {
     } catch (err) {
       console.error('Error creating order without number:', err);
       setFormError('Error al crear la tarea. Por favor, inténtelo de nuevo.');
+
+
     }
   };
 
@@ -663,6 +665,7 @@ function App() {
                 </div>
               </div>
 
+
               {error && (
                 <div className="text-red-600 text-sm text-center">{error}</div>
               )}
@@ -687,6 +690,7 @@ function App() {
                   type="button"
                   onClick={() => setIsSignUp(!isSignUp)}
                   className="w-full text-sm text-[#b41826] hover:text-[#a01522]"
+
                 >
                   {isSignUp
                     ? '¿Ya tienes una cuenta? Inicia sesión'
