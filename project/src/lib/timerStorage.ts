@@ -14,7 +14,7 @@ export function loadTimerStates(): Record<string, TaskState> {
     const states = JSON.parse(savedStates);
     
     // Convert saved dates back to numbers
-    Object.values(states).forEach((state: TaskState) => {
+    (Object.values(states) as TaskState[]).forEach((state) => {
       if (state.startTime) {
         state.startTime = Number(state.startTime);
       }
