@@ -67,8 +67,8 @@ function App() {
   //const [pausedTime, setPausedTime] = useState<number>(0);
   //const [elapsedTime, setElapsedTime] = useState<number>(0);
   //const [stageTimes, setStageTimes] = useState<StageTime>({
-    assembly: 0
-  };
+  //  assembly: 0
+  //)};
   const [completedStages, setCompletedStages] = useState<Set<Stage>>(new Set());
   const [currentOrder, setCurrentOrder] = useState<ManufacturingOrder | null>(null);
   const [orders, setOrders] = useState<ManufacturingOrder[]>([]);
@@ -1005,5 +1005,5 @@ function App() {
       </footer>
     </div>
   );
-
+]
 export default App;
