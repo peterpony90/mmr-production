@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { ArrowRight, ArrowLeft, Mail, Lock, LogOut, Play, Square, Timer, CheckCircle, ChevronRight, ClipboardList, Home, Pause, Wrench } from 'lucide-react';
+import { ArrowRight, ArrowLeft, Mail, Lock, LogOut, Play, Square, Timer, CheckCircle, ChevronRight, ClipboardList, Home, Pause} from 'lucide-react';
 import { signIn, signUp, signOut, getSession } from './lib/auth';
 import { createManufacturingOrder, updateManufacturingOrderStage, saveStageTime, getManufacturingOrders, getAllStageTimes, deleteAllManufacturingOrders, updateManufacturingNumber } from './lib/database';
 import type { AuthError } from './lib/auth';
@@ -61,12 +61,12 @@ function App() {
   const [currentView, setCurrentView] = useState<View>('menu');
   const [manufacturingNumber, setManufacturingNumber] = useState('');
   const [currentStage, setCurrentStage] = useState<Stage>('assembly');
-  const [isTimerRunning, setIsTimerRunning] = useState(false);
-  const [isPaused, setIsPaused] = useState(false);
-  const [startTime, setStartTime] = useState<number | null>(null);
-  const [pausedTime, setPausedTime] = useState<number>(0);
-  const [elapsedTime, setElapsedTime] = useState<number>(0);
-  const [stageTimes, setStageTimes] = useState<StageTime>({
+ // const [isTimerRunning, setIsTimerRunning] = useState(false);
+  //const [isPaused, setIsPaused] = useState(false);
+  //const [startTime, setStartTime] = useState<number | null>(null);
+  //const [pausedTime, setPausedTime] = useState<number>(0);
+  //const [elapsedTime, setElapsedTime] = useState<number>(0);
+  //const [stageTimes, setStageTimes] = useState<StageTime>({
     assembly: 0
   });
   const [completedStages, setCompletedStages] = useState<Set<Stage>>(new Set());
@@ -424,13 +424,13 @@ function App() {
     }
   };
 
-  const handleStageChange = async (newStage: Stage) => {
-    if (currentOrder) {
-      await updateManufacturingOrderStage(currentOrder.id, newStage);
-      await loadOrders();
-    }
-    setCurrentStage(newStage);
-  };
+  //const handleStageChange = async (newStage: Stage) => {
+    //if (currentOrder) {
+      //await updateManufacturingOrderStage(currentOrder.id, newStage);
+      //await loadOrders();
+    //}
+    //setCurrentStage(newStage);
+  //};
 
   const handleSelectOrder = (order: ManufacturingOrder) => {
     setCurrentOrder(order);
