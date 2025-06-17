@@ -238,26 +238,30 @@ export async function getAllStageTimes(): Promise<Record<string, { total: number
 
   const result: Record<string, { total: number, stages: Record<string, number>, users: Record<string, string> }> = {};
 
-  stageTimes.forEach((time: any) => {
-    if (!result[time.order_id]) {
-      result[time.order_id] = {
-        total: 0,
-        stages: {
-          assembly: 0
-        },
-        users: {}
-      };
-    }
+  if (stageTimes) {
+    stageTimes.forEach((time: any) => {
+      if (!result[time.order_id]) {
+        result[time.order_id] = {
+          total: 0,
+          stages: {},
+          users: {}
+        };
+      }
 
-    result[time.order_id].stages[time.stage] = time.time_ms;
-    const userName = time.profile?.name || time.profile?.email?.split('@')[0] || 'Usuario desconocido';
-    result[time.order_id].users[time.stage] = userName;
-  });
+      // Store the time for this stage
+      result[time.order_id].stages[time.stage] = time.time_ms;
+      
+      // Store the user name for this stage
+      const userName = time.profile?.name || time.profile?.email?.split('@')[0] || 'Usuario desconocido';
+      result[time.order_id].users[time.stage] = userName;
+    });
 
-  Object.keys(result).forEach(orderId => {
-    result[orderId].total = Object.values(result[orderId].stages)
-      .reduce((sum, time) => sum + (time || 0), 0);
-  });
+    // Calculate total times
+    Object.keys(result).forEach(orderId => {
+      result[orderId].total = Object.values(result[orderId].stages)
+        .reduce((sum, time) => sum + (time || 0), 0);
+    });
+  }
 
   return result;
 }

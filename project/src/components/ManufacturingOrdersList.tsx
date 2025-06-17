@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Download, ChevronLeft, ChevronRight, Timer, Trash2, ChevronDown, ChevronUp, Eye, User, Pencil} from 'lucide-react';
+import { Download, ChevronLeft, ChevronRight, Timer, Trash2, ChevronDown, ChevronUp, Eye, User, Pencil, AlertTriangle, FileText } from 'lucide-react';
 import type { ManufacturingOrder } from '../lib/database';
 import { utils, writeFile } from 'xlsx';
 import { deleteManufacturingOrder } from '../lib/database';
@@ -48,6 +48,7 @@ export function ManufacturingOrdersList({ orders, onSelectOrder, totalTimes, onD
   const [currentPage, setCurrentPage] = useState(1);
   const [isDeleting, setIsDeleting] = useState(false);
   const [expandedOrder, setExpandedOrder] = useState<string | null>(null);
+  const [selectedOrders, setSelectedOrders] = useState<Set<string>>(new Set());
 
   const totalPages = Math.ceil(orders.length / ITEMS_PER_PAGE);
   const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
@@ -71,11 +72,48 @@ export function ManufacturingOrdersList({ orders, onSelectOrder, totalTimes, onD
     }
   };
 
+  const handleSelectOrder = (orderId: string) => {
+    const newSelected = new Set(selectedOrders);
+    if (newSelected.has(orderId)) {
+      newSelected.delete(orderId);
+    } else {
+      newSelected.add(orderId);
+    }
+    setSelectedOrders(newSelected);
+  };
+
+  const handleSelectAll = () => {
+    if (selectedOrders.size === paginatedOrders.length) {
+      setSelectedOrders(new Set());
+    } else {
+      setSelectedOrders(new Set(paginatedOrders.map(order => order.id)));
+    }
+  };
+
+  const handleDeleteSelected = async () => {
+    if (selectedOrders.size === 0) return;
+    
+    if (window.confirm(`¿Estás seguro de que deseas eliminar ${selectedOrders.size} orden(es) seleccionada(s)? Esta acción no se puede deshacer.`)) {
+      try {
+        setIsDeleting(true);
+        await Promise.all(Array.from(selectedOrders).map(orderId => deleteManufacturingOrder(orderId)));
+        setSelectedOrders(new Set());
+        await onOrdersChanged();
+      } catch (error) {
+        console.error('Error deleting selected orders:', error);
+        alert('Error al eliminar las órdenes seleccionadas. Por favor, inténtalo de nuevo.');
+      } finally {
+        setIsDeleting(false);
+      }
+    }
+  };
+
   const handleDeleteAll = async () => {
     if (window.confirm('¿Estás seguro de que deseas eliminar todas las órdenes de fabricación? Esta acción no se puede deshacer.')) {
       setIsDeleting(true);
       try {
         await onDeleteAll();
+        setSelectedOrders(new Set());
       } catch (error) {
         console.error('Error deleting orders:', error);
         alert('Error al eliminar las órdenes. Por favor, inténtalo de nuevo.');
@@ -147,6 +185,16 @@ export function ManufacturingOrdersList({ orders, onSelectOrder, totalTimes, onD
           Órdenes de fabricación ({orders.length})
         </h2>
         <div className="flex items-center gap-4">
+          {selectedOrders.size > 0 && (
+            <button
+              onClick={handleDeleteSelected}
+              disabled={isDeleting}
+              className="flex items-center gap-2 px-3 py-1.5 text-sm text-white bg-red-600 rounded-md hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <Trash2 className="w-4 h-4" />
+              {isDeleting ? 'Eliminando...' : `Eliminar seleccionadas (${selectedOrders.size})`}
+            </button>
+          )}
           <button
             onClick={handleExportToExcel}
             disabled={orders.length === 0}
@@ -170,6 +218,14 @@ export function ManufacturingOrdersList({ orders, onSelectOrder, totalTimes, onD
         <table className="w-full">
           <thead>
             <tr className="bg-gray-50">
+              <th className="w-8 px-6 py-3">
+                <input
+                  type="checkbox"
+                  checked={selectedOrders.size === paginatedOrders.length && paginatedOrders.length > 0}
+                  onChange={handleSelectAll}
+                  className="rounded border-gray-300 text-[#b41826] focus:ring-[#b41826]"
+                />
+              </th>
               <th className="w-8 px-6 py-3"></th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                 Nº O. Fabricación
@@ -201,6 +257,14 @@ export function ManufacturingOrdersList({ orders, onSelectOrder, totalTimes, onD
             {paginatedOrders.map((order) => (
               <React.Fragment key={order.id}>
                 <tr className="hover:bg-gray-50 transition-colors">
+                  <td className="px-6 py-4">
+                    <input
+                      type="checkbox"
+                      checked={selectedOrders.has(order.id)}
+                      onChange={() => handleSelectOrder(order.id)}
+                      className="rounded border-gray-300 text-[#b41826] focus:ring-[#b41826]"
+                    />
+                  </td>
                   <td className="px-6 py-4">
                     <button
                       onClick={() => handleToggleDetails(order.id)}
@@ -274,7 +338,7 @@ export function ManufacturingOrdersList({ orders, onSelectOrder, totalTimes, onD
                 </tr>
                 {expandedOrder === order.id && (
                   <tr>
-                    <td colSpan={9} className="px-6 py-4 bg-gray-50">
+                    <td colSpan={10} className="px-6 py-4 bg-gray-50">
                       <div className="space-y-4">
                         <div className="grid grid-cols-1 gap-4">
                           <div className="bg-white p-4 rounded-lg shadow-sm border border-gray-200">

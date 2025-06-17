@@ -11,6 +11,7 @@ import { IncidentsDialog } from './components/IncidentsDialog';
 import { EditOrderModal } from './components/EditOrderModal';
 import { NewOrderTypeSelection } from './components/NewOrderTypeSelection';
 import { TaskDescriptionDialog } from './components/TaskDescriptionDialog';
+import { IncidentsInputDialog } from './components/IncidentsInputDialog';
 
 type Stage = 'assembly' | 'summary';
 type View = 'menu' | 'new-order' | 'new-order-type' | 'view-orders' | 'production';
@@ -60,6 +61,15 @@ function App() {
   const [currentView, setCurrentView] = useState<View>('menu');
   const [manufacturingNumber, setManufacturingNumber] = useState('');
   const [currentStage, setCurrentStage] = useState<Stage>('assembly');
+ // const [isTimerRunning, setIsTimerRunning] = useState(false);
+  //const [isPaused, setIsPaused] = useState(false);
+  //const [startTime, setStartTime] = useState<number | null>(null);
+  //const [pausedTime, setPausedTime] = useState<number>(0);
+  //const [elapsedTime, setElapsedTime] = useState<number>(0);
+  //const [stageTimes, setStageTimes] = useState<StageTime>({
+  //  assembly: 0
+  //)};
+  const [completedStages, setCompletedStages] = useState<Set<Stage>>(new Set());
   const [currentOrder, setCurrentOrder] = useState<ManufacturingOrder | null>(null);
   const [orders, setOrders] = useState<ManufacturingOrder[]>([]);
   const [totalTimes, setTotalTimes] = useState<Record<string, { total: number, stages: Record<string, number>, users: Record<string, string> }>>({});
@@ -69,6 +79,7 @@ function App() {
   const [editError, setEditError] = useState<string | null>(null);
   const [orderType, setOrderType] = useState<OrderType>(null);
   const [showTaskDescriptionDialog, setShowTaskDescriptionDialog] = useState(false);
+  const [showIncidentsInputDialog, setShowIncidentsInputDialog] = useState(false);
   const [taskStates, setTaskStates] = useState<Record<string, TaskState>>({});
 
   useEffect(() => {
@@ -175,9 +186,21 @@ function App() {
     completedStages: new Set()
   });
 
+  // Check if user has any open tasks
+  const hasOpenTasks = () => {
+    return orders.some(order => order.current_stage !== 'summary' && order.user_id === session?.user?.id);
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setFormError(null);
+
+    // Check if user has open tasks
+    if (hasOpenTasks()) {
+      setFormError('Tienes una tarea abierta. Debes finalizarla antes de crear una nueva.');
+      return;
+    }
+
     try {
       const order = await createManufacturingOrder(manufacturingNumber, ['assembly']);
       setCurrentOrder(order);
@@ -259,12 +282,25 @@ function App() {
   };
 
   const handleNewOrder = () => {
+    // Check if user has open tasks
+    if (hasOpenTasks()) {
+      setFormError('Tienes una tarea abierta. Debes finalizarla antes de crear una nueva.');
+      return;
+    }
+
     setManufacturingNumber('');
     setOrderType(null);
+    setFormError(null);
     setCurrentView('new-order-type');
   };
 
   const handleOrderTypeSelect = (type: 'with-number' | 'without-number') => {
+    // Check if user has open tasks
+    if (hasOpenTasks()) {
+      setFormError('Tienes una tarea abierta. Debes finalizarla antes de crear una nueva.');
+      return;
+    }
+
     setOrderType(type);
     if (type === 'with-number') {
       setCurrentView('new-order');
@@ -274,6 +310,12 @@ function App() {
   };
 
   const handleStartWithoutNumber = async () => {
+    // Check if user has open tasks
+    if (hasOpenTasks()) {
+      setFormError('Tienes una tarea abierta. Debes finalizarla antes de crear una nueva.');
+      return;
+    }
+
     try {
       const timestamp = new Date().getTime();
       const randomSuffix = Math.random().toString(36).substring(2, 6);
@@ -331,11 +373,18 @@ function App() {
       await saveStageTime(currentOrder.id, currentStage, time);
       await loadOrders();
       
-      if (orderType === 'with-number') {
-        setShowIncidentsDialog(true);
-      } else {
-        setShowTaskDescriptionDialog(true);
-      }
+      // Always show incidents input dialog when task is completed
+      setShowIncidentsInputDialog(true);
+    }
+  };
+
+  const handleIncidentsInputConfirm = async (incidents: string) => {
+    setShowIncidentsInputDialog(false);
+    if (currentOrder) {
+      const hasIncidents = incidents.trim().length > 0;
+      await updateManufacturingOrderStage(currentOrder.id, 'summary', hasIncidents, incidents);
+      await loadOrders();
+      setCurrentStage('summary');
     }
   };
 
@@ -375,6 +424,14 @@ function App() {
     }
   };
 
+  //const handleStageChange = async (newStage: Stage) => {
+    //if (currentOrder) {
+      //await updateManufacturingOrderStage(currentOrder.id, newStage);
+      //await loadOrders();
+    //}
+    //setCurrentStage(newStage);
+  //};
+
   const handleSelectOrder = (order: ManufacturingOrder) => {
     setCurrentOrder(order);
     setManufacturingNumber(order.manufacturing_number);
@@ -393,6 +450,7 @@ function App() {
 
   const handleGoToMenu = () => {
     setCurrentView('menu');
+    setFormError(null);
   };
 
   const handleDeleteAll = async () => {
@@ -633,11 +691,7 @@ function App() {
                   <button
                     onClick={() => {
                       handleStopTimer();
-                      if (orderType === 'with-number') {
-                        setShowIncidentsDialog(true);
-                      } else {
-                        setShowTaskDescriptionDialog(true);
-                      }
+                      setShowIncidentsInputDialog(true);
                     }}
                     className="flex items-center gap-2 px-6 py-3 text-white bg-green-600 rounded-md hover:bg-green-700"
                   >
@@ -782,16 +836,41 @@ function App() {
         {currentView === 'production' && renderBreadcrumbs()}
 
         {currentView === 'menu' && (
-          <MainMenu
-            onNewOrder={handleNewOrder}
-            onViewOrders={() => setCurrentView('view-orders')}
-          />
+          <>
+            {hasOpenTasks() && (
+              <div className="max-w-2xl mx-auto mb-6">
+                <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+                  <div className="flex">
+                    <div className="flex-shrink-0">
+                      <svg className="h-5 w-5 text-yellow-400" viewBox="0 0 20 20" fill="currentColor">
+                        <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                      </svg>
+                    </div>
+                    <div className="ml-3">
+                      <h3 className="text-sm font-medium text-yellow-800">
+                        Tarea abierta
+                      </h3>
+                      <div className="mt-2 text-sm text-yellow-700">
+                        <p>Tienes una tarea abierta. Debes finalizarla antes de crear una nueva.</p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+            <MainMenu
+              onNewOrder={handleNewOrder}
+              onViewOrders={() => setCurrentView('view-orders')}
+              hasOpenTasks={hasOpenTasks()}
+            />
+          </>
         )}
 
         {currentView === 'new-order-type' && (
           <NewOrderTypeSelection
             onSelectType={handleOrderTypeSelect}
             onBack={() => setCurrentView('menu')}
+            hasOpenTasks={hasOpenTasks()}
           />
         )}
 
@@ -830,6 +909,7 @@ function App() {
                     type="button"
                     onClick={() => {
                       setManufacturingNumber('');
+                      setFormError(null);
                       setCurrentView('new-order-type');
                     }}
                     className="inline-flex justify-center py-2 px-4 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500"
@@ -857,6 +937,7 @@ function App() {
               <button
                 onClick={() => {
                   setManufacturingNumber('');
+                  setFormError(null);
                   setCurrentView('menu');
                 }}
                 className="inline-flex items-center px-4 py-2 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50"
@@ -907,6 +988,13 @@ function App() {
           />
         )}
 
+        {showIncidentsInputDialog && (
+          <IncidentsInputDialog
+            onConfirm={handleIncidentsInputConfirm}
+            onClose={() => setShowIncidentsInputDialog(false)}
+          />
+        )}
+
         {renderTimer()}
       </div>
 
@@ -918,5 +1006,4 @@ function App() {
     </div>
   );
 }
-
 export default App;
